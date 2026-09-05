@@ -68,7 +68,8 @@ TEST(EventLoopTest, FdWatcherWithPipe) {
 
     // Write to pipe
     const char msg[] = "test";
-    write(pipefds[1], msg, sizeof(msg));
+    ssize_t written = write(pipefds[1], msg, sizeof(msg));
+    static_cast<void>(written);
 
     loop.dispatch(50);
     EXPECT_TRUE(read_called.load());

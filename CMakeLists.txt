@@ -17,7 +17,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wpedantic
         -Wconversion
         -Wshadow
-        -Wnon-virtual-dtor
+        $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
         -Werror=return-type
     )
 endif()
