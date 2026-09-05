@@ -1,0 +1,36 @@
+{
+  "files.watcherExclude": {
+    "**/.git/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/build/**": true,
+    "**/build*/**": true,
+    "**/CMakeFiles/**": true,
+    "**/bin/**": true,
+    "**/lib/**": true,
+    "**/.cache/**": true
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true
+  },
+  "search.exclude": {
+    "**/build/**": true,
+    "**/build*/**": true,
+    "**/bin/**": true,
+    "**/lib/**": true
+  },
+  "git.autorefresh": true,
+  "git.autoStash": false,
+  "git.confirmSync": false,
+  "git.detectSubmodules": false,
+  "git.status.checkDynamicSubmodules": false,
+  "git.untrackedChanges": "separate",
+  "git.ignoreSubmodules": true,
+  "git.decorations.enabled": true,
+  "git.openRepositoryInParentFolders": "never"
+}

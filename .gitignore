@@ -20,7 +20,11 @@ CTestTestfile.cmake
 Testing/
 
 # Editor / IDE artifacts
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *~
