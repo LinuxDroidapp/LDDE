@@ -1,0 +1,27 @@
+# LinuxDroid Desktop Environment (LDDE) Configuration File
+#
+# Precedence:
+# 1. Built-in defaults
+# 2. System configuration: /etc/linuxdroid/desktop.conf
+# 3. User configuration:   ~/.config/linuxdroid/desktop.conf
+# 4. Command-line overrides
+
+[general]
+# Configuration version for schema migration compatibility
+config_version = 1
+
+# Desktop environment identification
+desktop_name = LDDE
+
+[logging]
+# Minimum logging severity level: TRACE, DEBUG, INFO, WARN, ERROR, FATAL
+level = INFO
+
+[display]
+# Default UI scale factor multiplier
+scale_factor = 1.0
+
+[input]
+# Enable tap to click on touchpads / touch devices
+tap_to_click = true
+
