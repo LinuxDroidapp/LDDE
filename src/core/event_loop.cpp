@@ -267,7 +267,8 @@ void EventLoop::post(PostCallback task) {
 void EventLoop::wakeup() {
     if (wakeup_fd_ >= 0) {
         uint64_t val = 1;
-        write(wakeup_fd_, &val, sizeof(val));
+        ssize_t n = write(wakeup_fd_, &val, sizeof(val));
+        static_cast<void>(n);
     }
 }
 
@@ -287,7 +288,8 @@ void EventLoop::process_pending_tasks() {
 
 void EventLoop::handle_wakeup() {
     uint64_t val = 0;
-    read(wakeup_fd_, &val, sizeof(val));
+    ssize_t n = read(wakeup_fd_, &val, sizeof(val));
+    static_cast<void>(n);
     process_pending_tasks();
 }
 
@@ -302,7 +304,8 @@ void EventLoop::handle_signals() {
 
 void EventLoop::handle_timer(int tfd) {
     uint64_t expirations = 0;
-    read(tfd, &expirations, sizeof(expirations));
+    ssize_t n = read(tfd, &expirations, sizeof(expirations));
+    static_cast<void>(n);
 
     auto it_id = timer_fd_to_id_.find(tfd);
     if (it_id == timer_fd_to_id_.end()) {

@@ -187,6 +187,14 @@ Status Application::initialize_components() {
         return s;
     }
 
+    // Initialize window tracking subsystem
+    s = window_tracker_.initialize(wayland_connection_, wayland_registry_, window_registry_, config_);
+    if (s.is_error()) {
+        LDDE_LOG_ERROR(Core, "Failed to initialize window tracker: " << s.to_string());
+        lifecycle_.transition_to(LifecycleState::Failed);
+        return s;
+    }
+
     return Status::ok();
 }
 
@@ -224,6 +232,19 @@ Status Application::setup_event_loop() {
 
         if (s.is_ok()) {
             wayland_fd_attached_ = true;
+        }
+    }
+
+    // Hook application tracking server fd into event loop
+    int server_fd = window_tracker_.server_fd();
+    if (server_fd >= 0) {
+        s = event_loop_.add_fd(server_fd, FdEvent::Readable, [this](int, FdEvent) {
+            window_tracker_.dispatch_server();
+        });
+        if (s.is_ok()) {
+            server_fd_attached_ = true;
+        } else {
+            LDDE_LOG_WARN(Core, "Failed to add window tracking server fd to event loop: " << s.to_string());
         }
     }
 
@@ -355,6 +376,10 @@ int Application::run() {
         if (wayland_connection_.is_connected()) {
             wayland_connection_.dispatch_pending();
         }
+
+        if (server_fd_attached_) {
+            window_tracker_.dispatch_server();
+        }
     }
 
     perform_shutdown();
@@ -380,12 +405,19 @@ void Application::perform_shutdown() {
     LDDE_LOG_INFO(Core, "Performing deterministic LDDE shutdown");
     lifecycle_.transition_to(LifecycleState::Stopping);
 
+    if (server_fd_attached_) {
+        event_loop_.remove_fd(window_tracker_.server_fd());
+        server_fd_attached_ = false;
+    }
+
     if (wayland_fd_attached_) {
         event_loop_.remove_fd(wayland_connection_.fd());
         wayland_fd_attached_ = false;
     }
 
     // Release components in reverse initialization order
+    window_tracker_.shutdown();
+    window_registry_.clear();
     shell_.shutdown();
     input_manager_.reset();
     display_manager_.reset();

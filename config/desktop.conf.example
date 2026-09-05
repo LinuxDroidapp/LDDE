@@ -39,3 +39,9 @@ desktop_bg_bottom = #0a0e17
 status_bg = #161e30dd
 dock_bg = #141c2cfa
 
+[window_tracking]
+# Enable application tracking endpoint
+enabled = true
+# Wayland socket name for tracked applications
+socket_name = wayland-ldde-apps
+

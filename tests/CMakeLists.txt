@@ -13,6 +13,10 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_shell_layout.cpp
     unit/test_shell_tokens.cpp
     unit/test_shell_lifecycle.cpp
+    unit/test_window_model.cpp
+    unit/test_window_registry.cpp
+    unit/test_window_events.cpp
+    unit/test_transient_windows.cpp
 )
 
 add_executable(ldde_unit_tests ${LDDE_UNIT_TEST_SOURCES})

@@ -25,6 +25,7 @@ endif()
 # Dependencies
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client>=1.20)
+pkg_check_modules(WAYLAND_SERVER REQUIRED wayland-server>=1.20)
 pkg_check_modules(CAIRO REQUIRED cairo>=1.16)
 find_package(Threads REQUIRED)
 
@@ -38,6 +39,7 @@ set(LDDE_CORE_SOURCES
     src/config/config.cpp
     src/wayland/connection.cpp
     src/wayland/registry.cpp
+    src/wayland/xdg-shell-protocol.c
     src/display/display_info.cpp
     src/display/display_manager.cpp
     src/input/seat.cpp
@@ -54,6 +56,10 @@ set(LDDE_CORE_SOURCES
     src/shell/dock_region.cpp
     src/shell/shell_overlay.cpp
     src/shell/shell.cpp
+    src/window/types.cpp
+    src/window/window.cpp
+    src/window/window_registry.cpp
+    src/window/window_tracker.cpp
     src/core/application.cpp
 )
 
@@ -63,11 +69,13 @@ target_include_directories(ldde_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     ${WAYLAND_CLIENT_INCLUDE_DIRS}
+    ${WAYLAND_SERVER_INCLUDE_DIRS}
     ${CAIRO_INCLUDE_DIRS}
 )
 
 target_link_libraries(ldde_core PUBLIC
     ${WAYLAND_CLIENT_LIBRARIES}
+    ${WAYLAND_SERVER_LIBRARIES}
     ${CAIRO_LIBRARIES}
     Threads::Threads
 )

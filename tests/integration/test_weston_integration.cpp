@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
 #include "ldde/core/application.hpp"
+#include "ldde/window/types.hpp"
+#include "ldde/window/window.hpp"
+#include "ldde/window/window_registry.hpp"
+#include "ldde/window/window_tracker.hpp"
+#include "ldde/wayland/xdg-shell-client-protocol.h"
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -11,6 +16,7 @@
 
 using namespace ldde::core;
 using namespace ldde::shell;
+using namespace ldde::window;
 
 class WestonIntegrationTest : public ::testing::Test {
 protected:
@@ -189,4 +195,212 @@ TEST_F(WestonIntegrationTest, ConnectDiscoverAndShutdown) {
     EXPECT_FALSE(app.shell().desktop().is_created());
     EXPECT_FALSE(app.shell().status_region().is_created());
     EXPECT_FALSE(app.shell().dock_region().is_created());
+}
+
+TEST_F(WestonIntegrationTest, WestonTrackedWindowLifecycle) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    // 1. Verify xdg_wm_base discovery and version
+    EXPECT_TRUE(app.wayland_registry().has_global("xdg_wm_base"));
+    EXPECT_TRUE(app.window_tracker().is_initialized());
+    EXPECT_NE(app.window_tracker().wm_base(), nullptr);
+    EXPECT_GE(app.window_tracker().xdg_wm_base_version(), 1u);
+
+    // 2. Create real tracked Wayland client window under Weston
+    auto comp_info = app.wayland_registry().get_global("wl_compositor");
+    ASSERT_TRUE(comp_info.has_value());
+    wl_compositor* comp = app.wayland_registry().bind<wl_compositor>(
+        comp_info->name, &wl_compositor_interface, comp_info->version);
+    ASSERT_NE(comp, nullptr);
+
+    wl_surface* client_surf = wl_compositor_create_surface(comp);
+    ASSERT_NE(client_surf, nullptr);
+
+    auto tracked = app.window_tracker().create_tracked_window(client_surf, "Weston Client Window", "org.test.WestonApp");
+    ASSERT_NE(tracked, nullptr);
+    EXPECT_EQ(tracked->title(), "Weston Client Window");
+    EXPECT_EQ(tracked->app_id(), "org.test.WestonApp");
+    EXPECT_EQ(tracked->lifecycle_state(), WindowLifecycleState::Initializing);
+    EXPECT_EQ(app.window_registry().count(), 1u);
+    EXPECT_EQ(app.window_registry().lookup(tracked->id()), tracked);
+
+    // 3. Commit surface to trigger Weston's initial configure sequence
+    wl_surface_commit(client_surf);
+    app.wayland_connection().flush();
+    app.wayland_connection().roundtrip();
+
+    EXPECT_TRUE(tracked->is_visible());
+    EXPECT_EQ(tracked->lifecycle_state(), WindowLifecycleState::Visible);
+
+    // 4. Destroy tracked window
+    app.window_tracker().destroy_window(tracked->id());
+    EXPECT_EQ(app.window_registry().count(), 0u);
+    EXPECT_EQ(tracked->lifecycle_state(), WindowLifecycleState::Destroyed);
+
+    wl_surface_destroy(client_surf);
+    wl_compositor_destroy(comp);
+
+    app.request_shutdown(0);
+}
+
+namespace {
+
+struct ExtClientData {
+    wl_compositor* compositor = nullptr;
+    xdg_wm_base* wm_base = nullptr;
+};
+
+const wl_registry_listener ext_reg_listener = {
+    .global = [](void* data, wl_registry* registry, uint32_t id, const char* interface, uint32_t version) {
+        auto* d = static_cast<ExtClientData*>(data);
+        if (strcmp(interface, "wl_compositor") == 0) {
+            d->compositor = static_cast<wl_compositor*>(
+                wl_registry_bind(registry, id, &wl_compositor_interface, std::min(version, 4u)));
+        } else if (strcmp(interface, "xdg_wm_base") == 0) {
+            d->wm_base = static_cast<xdg_wm_base*>(
+                wl_registry_bind(registry, id, &xdg_wm_base_interface, std::min(version, 5u)));
+        }
+    },
+    .global_remove = [](void*, wl_registry*, uint32_t) {}
+};
+
+} // namespace
+
+TEST_F(WestonIntegrationTest, RealExternalWaylandAppTracking) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    EXPECT_GE(app.window_tracker().server_fd(), 0);
+    std::string app_sock = app.window_tracker().application_socket_name();
+    EXPECT_FALSE(app_sock.empty());
+
+    std::atomic<bool> client_done = false;
+    std::atomic<bool> step_created = false;
+    std::atomic<bool> step_unmaximized = false;
+
+    // Run real external Wayland client in separate thread to communicate over Wayland socket
+    std::thread client_thread([&]() {
+        wl_display* ext_display = wl_display_connect(app_sock.c_str());
+        if (!ext_display) return;
+
+        wl_registry* ext_registry = wl_display_get_registry(ext_display);
+        ExtClientData ext_data;
+        wl_registry_add_listener(ext_registry, &ext_reg_listener, &ext_data);
+
+        wl_display_roundtrip(ext_display);
+        wl_display_roundtrip(ext_display);
+
+        if (!ext_data.compositor || !ext_data.wm_base) {
+            wl_registry_destroy(ext_registry);
+            wl_display_disconnect(ext_display);
+            client_done = true;
+            return;
+        }
+
+        wl_surface* surf = wl_compositor_create_surface(ext_data.compositor);
+        xdg_surface* xdg_surf = xdg_wm_base_get_xdg_surface(ext_data.wm_base, surf);
+        xdg_toplevel* toplevel = xdg_surface_get_toplevel(xdg_surf);
+
+        xdg_toplevel_set_title(toplevel, "External Wayland Editor");
+        xdg_toplevel_set_app_id(toplevel, "org.gnome.TextEditor");
+        xdg_toplevel_set_maximized(toplevel);
+        xdg_surface_set_window_geometry(xdg_surf, 10, 20, 800, 600);
+        wl_surface_commit(surf);
+        wl_display_roundtrip(ext_display);
+
+        step_created = true;
+
+        // Wait for main thread check
+        for (int i = 0; i < 50 && step_created; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        xdg_toplevel_unset_maximized(toplevel);
+        wl_display_roundtrip(ext_display);
+        step_unmaximized = true;
+
+        for (int i = 0; i < 50 && step_unmaximized; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        xdg_toplevel_destroy(toplevel);
+        xdg_surface_destroy(xdg_surf);
+        wl_surface_destroy(surf);
+        xdg_wm_base_destroy(ext_data.wm_base);
+        wl_compositor_destroy(ext_data.compositor);
+        wl_registry_destroy(ext_registry);
+        wl_display_roundtrip(ext_display);
+        wl_display_disconnect(ext_display);
+
+        client_done = true;
+    });
+
+    // 1. Wait for external client creation
+    auto start_t = std::chrono::steady_clock::now();
+    while (!step_created && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    // Verify tracked window properties in registry
+    EXPECT_EQ(app.window_registry().count(), 1u);
+    auto windows = app.window_registry().windows();
+    ASSERT_EQ(windows.size(), 1u);
+    auto tracked_win = windows[0];
+
+    EXPECT_EQ(tracked_win->title(), "External Wayland Editor");
+    EXPECT_EQ(tracked_win->app_id(), "org.gnome.TextEditor");
+    EXPECT_EQ(tracked_win->state(), WindowState::Maximized);
+    EXPECT_EQ(tracked_win->geometry(), (ldde::core::Rect{10, 20, 800, 600}));
+    EXPECT_TRUE(tracked_win->is_visible());
+    EXPECT_EQ(tracked_win->lifecycle_state(), WindowLifecycleState::Visible);
+
+    // 2. Allow unmaximize step
+    step_created = false;
+    start_t = std::chrono::steady_clock::now();
+    while (!step_unmaximized && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+    EXPECT_EQ(tracked_win->state(), WindowState::Normal);
+
+    // 3. Allow destruction step
+    step_unmaximized = false;
+    start_t = std::chrono::steady_clock::now();
+    while (!client_done && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    EXPECT_EQ(app.window_registry().count(), 0u);
+    EXPECT_EQ(tracked_win->lifecycle_state(), WindowLifecycleState::Destroyed);
+
+    client_thread.join();
+    app.request_shutdown(0);
 }

@@ -14,6 +14,8 @@
 #include "ldde/display/display_manager.hpp"
 #include "ldde/input/input_manager.hpp"
 #include "ldde/shell/shell.hpp"
+#include "ldde/window/window_registry.hpp"
+#include "ldde/window/window_tracker.hpp"
 
 namespace ldde::core {
 
@@ -47,6 +49,8 @@ public:
     [[nodiscard]] input::InputManager& input_manager() noexcept { return input_manager_; }
     [[nodiscard]] ReadinessManager& readiness_manager() noexcept { return readiness_manager_; }
     [[nodiscard]] shell::Shell& shell() noexcept { return shell_; }
+    [[nodiscard]] window::WindowRegistry& window_registry() noexcept { return window_registry_; }
+    [[nodiscard]] window::WindowTracker& window_tracker() noexcept { return window_tracker_; }
 
     [[nodiscard]] static std::optional<CommandLineOptions> parse_args(int argc, char* argv[]);
     static void print_help(std::string_view program_name);
@@ -62,10 +66,13 @@ private:
     input::InputManager input_manager_;
     ReadinessManager readiness_manager_;
     shell::Shell shell_;
+    window::WindowRegistry window_registry_;
+    window::WindowTracker window_tracker_;
 
     CommandLineOptions cli_options_;
     int exit_code_ = 0;
     bool wayland_fd_attached_ = false;
+    bool server_fd_attached_ = false;
 
     Status setup_logging();
     Status setup_session_environment();
