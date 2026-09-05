@@ -5,10 +5,15 @@
     "**/.git/subtree-cache/**": true,
     "**/build/**": true,
     "**/build*/**": true,
+    "**/build-debug/**": true,
+    "**/build-release/**": true,
     "**/CMakeFiles/**": true,
+    "**/Testing/**": true,
     "**/bin/**": true,
     "**/lib/**": true,
-    "**/.cache/**": true
+    "**/.cache/**": true,
+    "**/tmp/**": true,
+    "**/temp/**": true
   },
   "files.exclude": {
     "**/.git": true,
@@ -16,13 +21,35 @@
     "**/.hg": true,
     "**/CVS": true,
     "**/.DS_Store": true,
-    "**/Thumbs.db": true
+    "**/Thumbs.db": true,
+    "**/build/**": true,
+    "**/build*/**": true,
+    "**/build-debug/**": true,
+    "**/build-release/**": true,
+    "**/CMakeFiles/**": true,
+    "**/Testing/**": true,
+    "**/.cache/**": true,
+    "**/tmp/**": true,
+    "**/temp/**": true
   },
   "search.exclude": {
     "**/build/**": true,
     "**/build*/**": true,
+    "**/build-debug/**": true,
+    "**/build-release/**": true,
     "**/bin/**": true,
-    "**/lib/**": true
+    "**/lib/**": true,
+    "**/CMakeFiles/**": true,
+    "**/Testing/**": true,
+    "**/.cache/**": true,
+    "**/tmp/**": true,
+    "**/temp/**": true
+  },
+  "C_Cpp.files.exclude": {
+    "**/build/**": true,
+    "**/build*/**": true,
+    "**/build-debug/**": true,
+    "**/build-release/**": true
   },
   "git.autorefresh": false,
   "git.autofetch": false,
@@ -33,5 +60,8 @@
   "git.untrackedChanges": "separate",
   "git.ignoreSubmodules": true,
   "git.decorations.enabled": true,
-  "git.openRepositoryInParentFolders": "never"
+  "git.openRepositoryInParentFolders": "never",
+  "git.scanRepositories": false,
+  "git.repositoryScanMaxDepth": 0,
+  "git.ignoreLimitWarning": true
 }

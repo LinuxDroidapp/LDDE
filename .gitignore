@@ -29,3 +29,10 @@ Testing/
 *.swp
 *~
 
+# Temporary and cache directories
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+
