@@ -11,7 +11,7 @@ TEST(InputModelTest, DeviceTypeNames) {
 
 TEST(InputModelTest, SeatNullConstruction) {
     // Constructing Seat with null wl_seat for headless/unit verification
-    Seat seat(1, wayland::UniqueSeat(nullptr));
+    Seat seat(1, ldde::wayland::UniqueSeat(nullptr));
     EXPECT_EQ(seat.id(), 1u);
     EXPECT_FALSE(seat.has_pointer());
     EXPECT_FALSE(seat.has_keyboard());

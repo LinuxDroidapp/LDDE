@@ -25,3 +25,17 @@ scale_factor = 1.0
 # Enable tap to click on touchpads / touch devices
 tap_to_click = true
 
+[shell]
+# Shell components enable/disable
+status_bar_enabled = true
+dock_enabled = true
+
+# Dock position: bottom, left, right, top
+dock_position = bottom
+
+# Wallpaper and theme styling (hex format #RRGGBB or #RRGGBBAA)
+desktop_bg_top = #111726
+desktop_bg_bottom = #0a0e17
+status_bg = #161e30dd
+dock_bg = #141c2cfa
+

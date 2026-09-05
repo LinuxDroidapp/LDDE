@@ -179,6 +179,14 @@ Status Application::initialize_components() {
     // Second roundtrip to ensure initial output/seat events are processed
     wayland_connection_.roundtrip();
 
+    // Initialize shell subsystem
+    s = shell_.initialize(wayland_connection_, wayland_registry_, display_manager_, config_);
+    if (s.is_error()) {
+        LDDE_LOG_ERROR(Core, "Failed to initialize shell: " << s.to_string());
+        lifecycle_.transition_to(LifecycleState::Failed);
+        return s;
+    }
+
     return Status::ok();
 }
 
@@ -378,6 +386,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    shell_.shutdown();
     input_manager_.reset();
     display_manager_.reset();
     wayland_registry_.reset();

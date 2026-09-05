@@ -25,6 +25,7 @@ endif()
 # Dependencies
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client>=1.20)
+pkg_check_modules(CAIRO REQUIRED cairo>=1.16)
 find_package(Threads REQUIRED)
 
 # Core Library
@@ -41,6 +42,18 @@ set(LDDE_CORE_SOURCES
     src/display/display_manager.cpp
     src/input/seat.cpp
     src/input/input_manager.cpp
+    src/shell/types.cpp
+    src/shell/design_tokens.cpp
+    src/shell/theme.cpp
+    src/shell/shell_layout.cpp
+    src/shell/shm_buffer.cpp
+    src/shell/cairo_renderer.cpp
+    src/shell/shell_surface.cpp
+    src/shell/desktop_surface.cpp
+    src/shell/status_region.cpp
+    src/shell/dock_region.cpp
+    src/shell/shell_overlay.cpp
+    src/shell/shell.cpp
     src/core/application.cpp
 )
 
@@ -50,10 +63,12 @@ target_include_directories(ldde_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     ${WAYLAND_CLIENT_INCLUDE_DIRS}
+    ${CAIRO_INCLUDE_DIRS}
 )
 
 target_link_libraries(ldde_core PUBLIC
     ${WAYLAND_CLIENT_LIBRARIES}
+    ${CAIRO_LIBRARIES}
     Threads::Threads
 )
 

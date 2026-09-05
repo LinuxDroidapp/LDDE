@@ -13,6 +13,7 @@
 #include "ldde/wayland/registry.hpp"
 #include "ldde/display/display_manager.hpp"
 #include "ldde/input/input_manager.hpp"
+#include "ldde/shell/shell.hpp"
 
 namespace ldde::core {
 
@@ -45,6 +46,7 @@ public:
     [[nodiscard]] display::DisplayManager& display_manager() noexcept { return display_manager_; }
     [[nodiscard]] input::InputManager& input_manager() noexcept { return input_manager_; }
     [[nodiscard]] ReadinessManager& readiness_manager() noexcept { return readiness_manager_; }
+    [[nodiscard]] shell::Shell& shell() noexcept { return shell_; }
 
     [[nodiscard]] static std::optional<CommandLineOptions> parse_args(int argc, char* argv[]);
     static void print_help(std::string_view program_name);
@@ -59,6 +61,7 @@ private:
     display::DisplayManager display_manager_;
     input::InputManager input_manager_;
     ReadinessManager readiness_manager_;
+    shell::Shell shell_;
 
     CommandLineOptions cli_options_;
     int exit_code_ = 0;

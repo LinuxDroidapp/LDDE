@@ -10,6 +10,9 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_readiness.cpp
     unit/test_display_model.cpp
     unit/test_input_model.cpp
+    unit/test_shell_layout.cpp
+    unit/test_shell_tokens.cpp
+    unit/test_shell_lifecycle.cpp
 )
 
 add_executable(ldde_unit_tests ${LDDE_UNIT_TEST_SOURCES})

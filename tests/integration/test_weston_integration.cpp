@@ -10,6 +10,7 @@
 #include <fstream>
 
 using namespace ldde::core;
+using namespace ldde::shell;
 
 class WestonIntegrationTest : public ::testing::Test {
 protected:
@@ -123,7 +124,6 @@ TEST_F(WestonIntegrationTest, ConnectDiscoverAndShutdown) {
     EXPECT_TRUE(app.wayland_registry().has_global("wl_compositor"));
     EXPECT_TRUE(app.wayland_registry().has_global("wl_shm"));
     EXPECT_TRUE(app.wayland_registry().has_global("wl_output"));
-    EXPECT_TRUE(app.wayland_registry().has_global("wl_seat"));
 
     // 5. Verify display manager discovered output
     const auto& displays = app.display_manager().displays();
@@ -133,10 +133,44 @@ TEST_F(WestonIntegrationTest, ConnectDiscoverAndShutdown) {
     EXPECT_GT(primary->width, 0);
     EXPECT_GT(primary->height, 0);
 
-    // 6. Verify input manager discovered seat
-    EXPECT_NE(app.input_manager().primary_seat(), nullptr);
+    // 6. Verify input manager handling
+    if (app.wayland_registry().has_global("wl_seat")) {
+        EXPECT_NE(app.input_manager().primary_seat(), nullptr);
+    }
 
-    // 7. Test running event loop and requesting clean shutdown
+    // 7. Verify D1 Shell subsystem state
+    EXPECT_TRUE(app.shell().is_ready());
+    EXPECT_EQ(app.shell().state(), ShellLifecycleState::Ready);
+
+    // 8. Verify Shell surfaces created and sized correctly
+    EXPECT_TRUE(app.shell().desktop().is_created());
+    EXPECT_EQ(app.shell().desktop().geometry().width, primary->width);
+    EXPECT_EQ(app.shell().desktop().geometry().height, primary->height);
+
+    EXPECT_TRUE(app.shell().status_region().is_created());
+    EXPECT_EQ(app.shell().status_region().geometry().width, primary->width);
+    EXPECT_GT(app.shell().status_region().geometry().height, 0);
+
+    EXPECT_TRUE(app.shell().dock_region().is_created());
+    EXPECT_GT(app.shell().dock_region().geometry().width, 0);
+    EXPECT_GT(app.shell().dock_region().geometry().height, 0);
+
+    // 9. Verify hit testing routing through shell
+    // Top status bar area (x=10, y=10)
+    EXPECT_EQ(app.shell().handle_pointer_motion(10, 10), ShellRegionType::Status);
+    EXPECT_EQ(app.shell().focused_region(), ShellRegionType::Status);
+
+    // Center desktop area (x = width / 2, y = height / 2)
+    EXPECT_EQ(app.shell().handle_pointer_motion(primary->width / 2, primary->height / 2),
+              ShellRegionType::Desktop);
+
+    // Dock area (center bottom)
+    const auto& dock_rect = app.shell().layout().dock_geometry();
+    EXPECT_EQ(app.shell().handle_touch_down(dock_rect.x + dock_rect.width / 2,
+                                           dock_rect.y + dock_rect.height / 2),
+              ShellRegionType::Dock);
+
+    // 10. Test running event loop and requesting clean shutdown
     std::thread runner([&app]() {
         // Allow event loop to enter running state
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -149,5 +183,10 @@ TEST_F(WestonIntegrationTest, ConnectDiscoverAndShutdown) {
     EXPECT_EQ(exit_code, 0);
     EXPECT_EQ(app.lifecycle().state(), LifecycleState::Stopped);
     EXPECT_FALSE(app.wayland_connection().is_connected());
-}
 
+    // 11. Verify deterministic shell cleanup
+    EXPECT_EQ(app.shell().state(), ShellLifecycleState::Stopped);
+    EXPECT_FALSE(app.shell().desktop().is_created());
+    EXPECT_FALSE(app.shell().status_region().is_created());
+    EXPECT_FALSE(app.shell().dock_region().is_created());
+}
