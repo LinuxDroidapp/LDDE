@@ -24,7 +24,8 @@
     "**/bin/**": true,
     "**/lib/**": true
   },
-  "git.autorefresh": true,
+  "git.autorefresh": false,
+  "git.autofetch": false,
   "git.autoStash": false,
   "git.confirmSync": false,
   "git.detectSubmodules": false,
