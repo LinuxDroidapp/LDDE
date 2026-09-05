@@ -5,6 +5,7 @@
 #include "ldde/window/window_registry.hpp"
 #include "ldde/window/window_tracker.hpp"
 #include "ldde/wayland/xdg-shell-client-protocol.h"
+#include <poll.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -404,3 +405,221 @@ TEST_F(WestonIntegrationTest, RealExternalWaylandAppTracking) {
     client_thread.join();
     app.request_shutdown(0);
 }
+
+TEST_F(WestonIntegrationTest, RealMultiWindowManagement) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    std::string app_sock = app.window_tracker().application_socket_name();
+    EXPECT_FALSE(app_sock.empty());
+
+    EXPECT_TRUE(app.window_manager().is_initialized());
+    EXPECT_EQ(app.window_registry().count(), 0u);
+
+    // Client context structure
+    struct ManagedClientContext {
+        wl_display* display = nullptr;
+        wl_registry* registry = nullptr;
+        ExtClientData ext_data;
+        wl_surface* surface = nullptr;
+        xdg_surface* xdg_surf = nullptr;
+        xdg_toplevel* toplevel = nullptr;
+        std::atomic<bool> closed = false;
+    };
+
+    const xdg_surface_listener xdg_surf_listener = {
+        .configure = [](void*, xdg_surface* surf, uint32_t serial) {
+            xdg_surface_ack_configure(surf, serial);
+        }
+    };
+
+    const xdg_toplevel_listener xdg_top_listener = {
+        .configure = [](void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {},
+        .close = [](void* data, xdg_toplevel*) {
+            auto* ctx = static_cast<ManagedClientContext*>(data);
+            ctx->closed = true;
+        },
+        .configure_bounds = nullptr,
+        .wm_capabilities = nullptr,
+    };
+
+    std::atomic<bool> client1_ready = false;
+    std::atomic<bool> client2_ready = false;
+    std::atomic<bool> finish_clients = false;
+    std::atomic<bool> c1_done = false;
+    std::atomic<bool> c2_done = false;
+
+    // Run two real application clients
+    ManagedClientContext c1;
+    ManagedClientContext c2;
+
+    std::thread c1_thread([&]() {
+        c1.display = wl_display_connect(app_sock.c_str());
+        if (!c1.display) return;
+        c1.registry = wl_display_get_registry(c1.display);
+        wl_registry_add_listener(c1.registry, &ext_reg_listener, &c1.ext_data);
+        wl_display_roundtrip(c1.display);
+        wl_display_roundtrip(c1.display);
+
+        if (!c1.ext_data.compositor || !c1.ext_data.wm_base) return;
+
+        c1.surface = wl_compositor_create_surface(c1.ext_data.compositor);
+        c1.xdg_surf = xdg_wm_base_get_xdg_surface(c1.ext_data.wm_base, c1.surface);
+        xdg_surface_add_listener(c1.xdg_surf, &xdg_surf_listener, &c1);
+
+        c1.toplevel = xdg_surface_get_toplevel(c1.xdg_surf);
+        xdg_toplevel_add_listener(c1.toplevel, &xdg_top_listener, &c1);
+        xdg_toplevel_set_title(c1.toplevel, "Calculator App");
+        xdg_toplevel_set_app_id(c1.toplevel, "org.gnome.Calculator");
+        wl_surface_commit(c1.surface);
+        wl_display_roundtrip(c1.display);
+
+        client1_ready = true;
+
+        while (!finish_clients && !c1.closed) {
+            struct pollfd pfd = { wl_display_get_fd(c1.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(c1.display);
+            }
+        }
+
+        xdg_toplevel_destroy(c1.toplevel);
+        xdg_surface_destroy(c1.xdg_surf);
+        wl_surface_destroy(c1.surface);
+        xdg_wm_base_destroy(c1.ext_data.wm_base);
+        wl_compositor_destroy(c1.ext_data.compositor);
+        wl_registry_destroy(c1.registry);
+        wl_display_flush(c1.display);
+        wl_display_disconnect(c1.display);
+        c1_done = true;
+    });
+
+    // Wait for client 1
+    auto start_t = std::chrono::steady_clock::now();
+    while (!client1_ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    ASSERT_EQ(app.window_registry().count(), 1u);
+    auto win1 = app.window_registry().windows()[0];
+    EXPECT_EQ(win1->title(), "Calculator App");
+    EXPECT_EQ(win1->app_id(), "org.gnome.Calculator");
+    EXPECT_EQ(app.window_manager().active_window_id(), win1->id());
+    EXPECT_EQ(app.window_manager().top_window_id(), win1->id());
+
+    // Connect client 2
+    std::thread c2_thread([&]() {
+        c2.display = wl_display_connect(app_sock.c_str());
+        if (!c2.display) return;
+        c2.registry = wl_display_get_registry(c2.display);
+        wl_registry_add_listener(c2.registry, &ext_reg_listener, &c2.ext_data);
+        wl_display_roundtrip(c2.display);
+        wl_display_roundtrip(c2.display);
+
+        if (!c2.ext_data.compositor || !c2.ext_data.wm_base) return;
+
+        c2.surface = wl_compositor_create_surface(c2.ext_data.compositor);
+        c2.xdg_surf = xdg_wm_base_get_xdg_surface(c2.ext_data.wm_base, c2.surface);
+        xdg_surface_add_listener(c2.xdg_surf, &xdg_surf_listener, &c2);
+
+        c2.toplevel = xdg_surface_get_toplevel(c2.xdg_surf);
+        xdg_toplevel_add_listener(c2.toplevel, &xdg_top_listener, &c2);
+        xdg_toplevel_set_title(c2.toplevel, "Calendar App");
+        xdg_toplevel_set_app_id(c2.toplevel, "org.gnome.Calendar");
+        wl_surface_commit(c2.surface);
+        wl_display_roundtrip(c2.display);
+
+        client2_ready = true;
+
+        while (!finish_clients && !c2.closed) {
+            struct pollfd pfd = { wl_display_get_fd(c2.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(c2.display);
+            }
+        }
+
+        xdg_toplevel_destroy(c2.toplevel);
+        xdg_surface_destroy(c2.xdg_surf);
+        wl_surface_destroy(c2.surface);
+        xdg_wm_base_destroy(c2.ext_data.wm_base);
+        wl_compositor_destroy(c2.ext_data.compositor);
+        wl_registry_destroy(c2.registry);
+        wl_display_flush(c2.display);
+        wl_display_disconnect(c2.display);
+        c2_done = true;
+    });
+
+    // Wait for client 2
+    start_t = std::chrono::steady_clock::now();
+    while (!client2_ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    ASSERT_EQ(app.window_registry().count(), 2u);
+    auto all_wins = app.window_registry().windows();
+    auto win2 = (all_wins[0]->id() == win1->id()) ? all_wins[1] : all_wins[0];
+    EXPECT_EQ(win2->title(), "Calendar App");
+
+    // 1. Verify multi-window stacking and focus: win2 should be active and on top
+    EXPECT_EQ(app.window_manager().active_window_id(), win2->id());
+    EXPECT_EQ(app.window_manager().top_window_id(), win2->id());
+    EXPECT_FALSE(win1->is_active());
+    EXPECT_TRUE(win2->is_active());
+
+    // 2. Test WindowManager Maximize on win1
+    Status max_status = app.window_manager().maximize(win1->id());
+    EXPECT_TRUE(max_status.is_ok());
+    EXPECT_EQ(win1->state(), WindowState::Maximized);
+
+    // 3. Test WindowManager Minimize on win2 -> Focus automatically falls back to win1
+    Status min_status = app.window_manager().minimize(win2->id());
+    EXPECT_TRUE(min_status.is_ok());
+    EXPECT_EQ(win2->state(), WindowState::Minimized);
+    EXPECT_EQ(app.window_manager().active_window_id(), win1->id());
+
+    // 4. Test WindowManager Restore on win2
+    Status res_status = app.window_manager().restore(win2->id());
+    EXPECT_TRUE(res_status.is_ok());
+    EXPECT_EQ(win2->state(), WindowState::Normal);
+    EXPECT_TRUE(win2->is_visible());
+
+    // 5. Test WindowManager Close on win1
+    Status close_status = app.window_manager().close(win1->id());
+    EXPECT_TRUE(close_status.is_ok());
+
+    // Wait for Client 1 to acknowledge close
+    start_t = std::chrono::steady_clock::now();
+    while (!c1.closed && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_TRUE(c1.closed);
+
+    // Clean finish
+    finish_clients = true;
+    start_t = std::chrono::steady_clock::now();
+    while ((!c1_done || !c2_done) && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    c1_thread.join();
+    c2_thread.join();
+
+    app.request_shutdown(0);
+}
+

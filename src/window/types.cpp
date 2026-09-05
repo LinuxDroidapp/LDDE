@@ -41,4 +41,42 @@ std::string_view window_event_name(WindowEventType event) noexcept {
     return "Unknown";
 }
 
+std::string_view resize_edge_name(ResizeEdge edge) noexcept {
+    switch (edge) {
+        case ResizeEdge::None:        return "None";
+        case ResizeEdge::Top:         return "Top";
+        case ResizeEdge::Bottom:      return "Bottom";
+        case ResizeEdge::Left:        return "Left";
+        case ResizeEdge::Right:       return "Right";
+        case ResizeEdge::TopLeft:     return "TopLeft";
+        case ResizeEdge::TopRight:    return "TopRight";
+        case ResizeEdge::BottomLeft:  return "BottomLeft";
+        case ResizeEdge::BottomRight: return "BottomRight";
+    }
+    return "Unknown";
+}
+
+std::string_view management_event_name(WindowManagementEvent event) noexcept {
+    switch (event) {
+        case WindowManagementEvent::Activated:           return "Activated";
+        case WindowManagementEvent::Deactivated:         return "Deactivated";
+        case WindowManagementEvent::MoveStarted:         return "MoveStarted";
+        case WindowManagementEvent::Moved:               return "Moved";
+        case WindowManagementEvent::MoveFinished:        return "MoveFinished";
+        case WindowManagementEvent::ResizeStarted:       return "ResizeStarted";
+        case WindowManagementEvent::Resized:             return "Resized";
+        case WindowManagementEvent::ResizeFinished:      return "ResizeFinished";
+        case WindowManagementEvent::MaximizeRequested:   return "MaximizeRequested";
+        case WindowManagementEvent::Maximized:           return "Maximized";
+        case WindowManagementEvent::RestoreRequested:    return "RestoreRequested";
+        case WindowManagementEvent::Restored:            return "Restored";
+        case WindowManagementEvent::MinimizeRequested:   return "MinimizeRequested";
+        case WindowManagementEvent::Minimized:           return "Minimized";
+        case WindowManagementEvent::FullscreenRequested: return "FullscreenRequested";
+        case WindowManagementEvent::FullscreenChanged:   return "FullscreenChanged";
+        case WindowManagementEvent::CloseRequested:      return "CloseRequested";
+    }
+    return "Unknown";
+}
+
 } // namespace ldde::window

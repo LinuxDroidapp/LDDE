@@ -17,6 +17,13 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_window_registry.cpp
     unit/test_window_events.cpp
     unit/test_transient_windows.cpp
+    unit/test_window_placement.cpp
+    unit/test_window_state_controller.cpp
+    unit/test_window_focus.cpp
+    unit/test_window_stacking.cpp
+    unit/test_window_interaction.cpp
+    unit/test_window_controls.cpp
+    unit/test_window_manager.cpp
 )
 
 add_executable(ldde_unit_tests ${LDDE_UNIT_TEST_SOURCES})

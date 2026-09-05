@@ -45,10 +45,17 @@ public:
     [[nodiscard]] std::chrono::steady_clock::time_point creation_time() const noexcept { return creation_time_; }
     [[nodiscard]] uint32_t last_configure_serial() const noexcept { return last_configure_serial_; }
 
+    [[nodiscard]] const std::optional<core::Rect>& saved_geometry() const noexcept { return saved_geometry_; }
+    [[nodiscard]] const core::Size& min_size() const noexcept { return min_size_; }
+    [[nodiscard]] const core::Size& max_size() const noexcept { return max_size_; }
+
     void set_title(std::string_view title);
     void set_app_id(std::string_view app_id);
     void set_geometry(const core::Rect& geom);
     void set_surface_size(const core::Size& size);
+    void set_saved_geometry(std::optional<core::Rect> geom) noexcept { saved_geometry_ = geom; }
+    void set_min_size(const core::Size& size) noexcept { min_size_ = size; }
+    void set_max_size(const core::Size& size) noexcept { max_size_ = size; }
     void set_state(WindowState state);
     void set_requested_state(WindowState state);
     void set_active(bool active);
@@ -82,6 +89,9 @@ private:
     std::optional<WindowId> parent_id_;
     std::chrono::steady_clock::time_point creation_time_;
     uint32_t last_configure_serial_ = 0;
+    std::optional<core::Rect> saved_geometry_;
+    core::Size min_size_{200, 150};
+    core::Size max_size_{0, 0};
 };
 
 } // namespace ldde::window

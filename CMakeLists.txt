@@ -60,6 +60,14 @@ set(LDDE_CORE_SOURCES
     src/window/window.cpp
     src/window/window_registry.cpp
     src/window/window_tracker.cpp
+    src/window/window_management_backend.cpp
+    src/window/window_placement.cpp
+    src/window/window_state_controller.cpp
+    src/window/window_focus.cpp
+    src/window/window_stacking.cpp
+    src/window/window_interaction.cpp
+    src/window/window_controls.cpp
+    src/window/window_manager.cpp
     src/core/application.cpp
 )
 

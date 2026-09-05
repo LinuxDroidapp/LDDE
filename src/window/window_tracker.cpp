@@ -463,8 +463,18 @@ const struct xdg_toplevel_interface server_toplevel_interface = {
     .show_window_menu = [](wl_client*, wl_resource*, wl_resource*, uint32_t, int32_t, int32_t) {},
     .move = [](wl_client*, wl_resource*, wl_resource*, uint32_t) {},
     .resize = [](wl_client*, wl_resource*, wl_resource*, uint32_t, uint32_t) {},
-    .set_max_size = [](wl_client*, wl_resource*, int32_t, int32_t) {},
-    .set_min_size = [](wl_client*, wl_resource*, int32_t, int32_t) {},
+    .set_max_size = [](wl_client*, wl_resource* resource, int32_t width, int32_t height) {
+        auto* data = static_cast<ServerToplevelData*>(wl_resource_get_user_data(resource));
+        if (data && data->window) {
+            data->window->set_max_size(core::Size{width, height});
+        }
+    },
+    .set_min_size = [](wl_client*, wl_resource* resource, int32_t width, int32_t height) {
+        auto* data = static_cast<ServerToplevelData*>(wl_resource_get_user_data(resource));
+        if (data && data->window) {
+            data->window->set_min_size(core::Size{width, height});
+        }
+    },
     .set_maximized = [](wl_client*, wl_resource* resource) {
         auto* data = static_cast<ServerToplevelData*>(wl_resource_get_user_data(resource));
         if (!data || !data->window) return;
@@ -757,6 +767,9 @@ void WindowTracker::send_close_to_client(WindowId id) {
         auto* data = static_cast<ServerToplevelData*>(it->second);
         if (data->toplevel_res) {
             xdg_toplevel_send_close(data->toplevel_res);
+            if (server_display_) {
+                wl_display_flush_clients(server_display_);
+            }
             if (data->window) {
                 data->window->request_close();
                 if (registry_) {
@@ -791,6 +804,9 @@ void WindowTracker::send_configure_to_client(WindowId id, int32_t width, int32_t
                 data->window->set_last_configure_serial(serial);
             }
             xdg_surface_send_configure(data->xdg_surface_data->xdg_surface_res, serial);
+            if (server_display_) {
+                wl_display_flush_clients(server_display_);
+            }
         }
     }
 }

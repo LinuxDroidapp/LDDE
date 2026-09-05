@@ -52,6 +52,10 @@ enum class ErrorCode {
     ApplicationAlreadyRunning,
     InvalidLifecycleTransition,
     ReadinessNotificationFailed,
+    // Window
+    WindowNotFound,
+    WindowManagementUnavailable,
+    InvalidWindowState,
     // Internal
     InvalidArgument,
     NotImplemented,

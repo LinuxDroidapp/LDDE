@@ -6,7 +6,8 @@
 
 namespace ldde::core {
 
-Application::Application() = default;
+Application::Application()
+    : window_manager_(window_registry_, window_tracker_, display_manager_) {}
 
 Application::~Application() {
     perform_shutdown();
@@ -194,6 +195,19 @@ Status Application::initialize_components() {
         lifecycle_.transition_to(LifecycleState::Failed);
         return s;
     }
+
+    // Initialize window manager subsystem
+    s = window_manager_.initialize(config_);
+    if (s.is_error()) {
+        LDDE_LOG_ERROR(Core, "Failed to initialize window manager: " << s.to_string());
+        lifecycle_.transition_to(LifecycleState::Failed);
+        return s;
+    }
+
+    // Attach display change observer to adapt window manager
+    display_manager_.on_display_changed([this](const display::DisplayInfo& disp) {
+        window_manager_.handle_display_change(disp);
+    });
 
     return Status::ok();
 }
@@ -416,6 +430,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    window_manager_.shutdown();
     window_tracker_.shutdown();
     window_registry_.clear();
     shell_.shutdown();

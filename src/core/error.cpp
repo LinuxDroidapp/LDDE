@@ -42,6 +42,9 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::ApplicationAlreadyRunning:    return "ApplicationAlreadyRunning";
         case ErrorCode::InvalidLifecycleTransition:   return "InvalidLifecycleTransition";
         case ErrorCode::ReadinessNotificationFailed:  return "ReadinessNotificationFailed";
+        case ErrorCode::WindowNotFound:               return "WindowNotFound";
+        case ErrorCode::WindowManagementUnavailable:  return "WindowManagementUnavailable";
+        case ErrorCode::InvalidWindowState:           return "InvalidWindowState";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";
