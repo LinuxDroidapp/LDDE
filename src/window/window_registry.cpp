@@ -26,6 +26,12 @@ Status WindowRegistry::add_window(std::shared_ptr<Window> window) {
 
     windows_[id] = window;
     window_order_.push_back(id);
+    if (window->surface()) {
+        surface_to_id_[window->surface()] = id;
+    }
+    if (window->toplevel()) {
+        toplevel_to_id_[window->toplevel()] = id;
+    }
 
     LDDE_LOG_INFO(Window, "Window registered [id=" << id
                           << ", app=\"" << window->app_id()
@@ -51,6 +57,13 @@ Status WindowRegistry::remove_window(WindowId id) {
 
     auto window = it->second;
     window->mark_destroyed();
+
+    if (window->surface()) {
+        surface_to_id_.erase(window->surface());
+    }
+    if (window->toplevel()) {
+        toplevel_to_id_.erase(window->toplevel());
+    }
 
     dispatch_event(WindowEvent{
         .type = WindowEventType::Destroyed,
@@ -85,20 +98,18 @@ std::shared_ptr<Window> WindowRegistry::lookup(WindowId id) const noexcept {
 
 std::shared_ptr<Window> WindowRegistry::find_by_surface(wl_surface* surface) const noexcept {
     if (!surface) return nullptr;
-    for (const auto& [id, win] : windows_) {
-        if (win && win->surface() == surface) {
-            return win;
-        }
+    auto it = surface_to_id_.find(surface);
+    if (it != surface_to_id_.end()) {
+        return lookup(it->second);
     }
     return nullptr;
 }
 
 std::shared_ptr<Window> WindowRegistry::find_by_toplevel(xdg_toplevel* toplevel) const noexcept {
     if (!toplevel) return nullptr;
-    for (const auto& [id, win] : windows_) {
-        if (win && win->toplevel() == toplevel) {
-            return win;
-        }
+    auto it = toplevel_to_id_.find(toplevel);
+    if (it != toplevel_to_id_.end()) {
+        return lookup(it->second);
     }
     return nullptr;
 }
@@ -203,6 +214,8 @@ void WindowRegistry::clear() noexcept {
     }
     windows_.clear();
     window_order_.clear();
+    surface_to_id_.clear();
+    toplevel_to_id_.clear();
     active_window_id_ = std::nullopt;
 }
 

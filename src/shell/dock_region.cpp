@@ -20,7 +20,11 @@ void DockRegion::render(ShmBufferPool& pool) {
         return;
     }
 
-    CairoRenderer::render_dock_region(*buffer, theme_, tokens_, slot_count_);
+    if (render_callback_) {
+        render_callback_(*buffer, theme_, tokens_);
+    } else {
+        CairoRenderer::render_dock_region(*buffer, theme_, tokens_, slot_count_);
+    }
     commit_buffer(buffer);
 }
 

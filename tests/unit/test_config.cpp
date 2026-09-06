@@ -15,6 +15,15 @@ TEST(ConfigTest, Defaults) {
     EXPECT_EQ(cfg.get_string_or("logging", "level", ""), "INFO");
     EXPECT_DOUBLE_EQ(cfg.get_double_or("display", "scale_factor", 0.0), 1.0);
     EXPECT_TRUE(cfg.get_bool_or("input", "tap_to_click", false));
+    EXPECT_TRUE(cfg.get_bool_or("switcher", "enabled", false));
+    EXPECT_EQ(cfg.get_string_or("switcher", "presentation", ""), "application");
+    EXPECT_TRUE(cfg.get_bool_or("switcher", "mru", false));
+    EXPECT_EQ(cfg.get_string_or("desktop", "background_mode", ""), "gradient");
+    EXPECT_EQ(cfg.get_string_or("desktop", "background_color", ""), "#121826");
+    EXPECT_TRUE(cfg.get_bool_or("desktop", "ambient_glow", false));
+    EXPECT_EQ(cfg.get_string_or("system", "clock_format", ""), "24h");
+    EXPECT_TRUE(cfg.get_bool_or("system", "status_bar_enabled", false));
+    EXPECT_TRUE(cfg.get_bool_or("system", "quick_controls_enabled", false));
     EXPECT_TRUE(cfg.validate().is_ok());
 }
 

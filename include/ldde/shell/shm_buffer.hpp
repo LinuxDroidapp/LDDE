@@ -51,9 +51,13 @@ public:
     ShmBufferPool& operator=(const ShmBufferPool&) = delete;
 
     std::shared_ptr<ShmBuffer> acquire_buffer(int32_t width, int32_t height);
+    void prune_stale(const std::vector<std::pair<int32_t, int32_t>>& active_dimensions);
+    void prune_idle();
+    [[nodiscard]] size_t buffer_count() const noexcept { return buffers_.size(); }
     void release_all();
 
 private:
+    static constexpr size_t kMaxBuffersPerGeometry = 3;
     wl_shm* shm_ = nullptr;
     std::vector<std::shared_ptr<ShmBuffer>> buffers_;
 

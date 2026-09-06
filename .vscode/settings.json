@@ -1,6 +1,5 @@
 {
   "files.watcherExclude": {
-    "**/.git/**": true,
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true,
     "**/build/**": true,
@@ -51,8 +50,8 @@
     "**/build-debug/**": true,
     "**/build-release/**": true
   },
-  "git.autorefresh": false,
-  "git.autofetch": false,
+  "git.autorefresh": true,
+  "git.autofetch": true,
   "git.autoStash": false,
   "git.confirmSync": false,
   "git.detectSubmodules": false,
@@ -61,7 +60,10 @@
   "git.ignoreSubmodules": true,
   "git.decorations.enabled": true,
   "git.openRepositoryInParentFolders": "never",
-  "git.scanRepositories": false,
-  "git.repositoryScanMaxDepth": 0,
-  "git.ignoreLimitWarning": true
+  "git.scanRepositories": [],
+  "git.repositoryScanMaxDepth": 1,
+  "git.ignoreLimitWarning": true,
+  "git.terminalGitEnv": {
+    "GIT_OPTIONAL_LOCKS": "0"
+  }
 }

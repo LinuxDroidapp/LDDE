@@ -9,6 +9,10 @@ TEST(ErrorTest, CategoryAndCodeNames) {
     EXPECT_EQ(error_category_name(ErrorCategory::Input), "Input");
     EXPECT_EQ(error_category_name(ErrorCategory::Display), "Display");
     EXPECT_EQ(error_category_name(ErrorCategory::Application), "Application");
+    EXPECT_EQ(error_category_name(ErrorCategory::Dock), "Dock");
+    EXPECT_EQ(error_category_name(ErrorCategory::Switcher), "Switcher");
+    EXPECT_EQ(error_category_name(ErrorCategory::Desktop), "Desktop");
+    EXPECT_EQ(error_category_name(ErrorCategory::System), "System");
     EXPECT_EQ(error_category_name(ErrorCategory::Session), "Session");
     EXPECT_EQ(error_category_name(ErrorCategory::Resource), "Resource");
     EXPECT_EQ(error_category_name(ErrorCategory::Internal), "Internal");
@@ -17,6 +21,12 @@ TEST(ErrorTest, CategoryAndCodeNames) {
     EXPECT_EQ(error_code_name(ErrorCode::ConfigNotFound), "ConfigNotFound");
     EXPECT_EQ(error_code_name(ErrorCode::WaylandConnectionFailed), "WaylandConnectionFailed");
     EXPECT_EQ(error_code_name(ErrorCode::InvalidLifecycleTransition), "InvalidLifecycleTransition");
+    EXPECT_EQ(error_code_name(ErrorCode::SwitcherNotOpen), "SwitcherNotOpen");
+    EXPECT_EQ(error_code_name(ErrorCode::SwitcherActivationFailed), "SwitcherActivationFailed");
+    EXPECT_EQ(error_code_name(ErrorCode::DesktopInitializationFailed), "DesktopInitializationFailed");
+    EXPECT_EQ(error_code_name(ErrorCode::DesktopSurfaceFailed), "DesktopSurfaceFailed");
+    EXPECT_EQ(error_code_name(ErrorCode::SystemUIInitializationFailed), "SystemUIInitializationFailed");
+    EXPECT_EQ(error_code_name(ErrorCode::SystemPanelInvalidState), "SystemPanelInvalidState");
 }
 
 TEST(ErrorTest, StatusOkAndError) {

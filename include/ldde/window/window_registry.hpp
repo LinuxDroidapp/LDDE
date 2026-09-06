@@ -51,6 +51,9 @@ private:
     std::vector<WindowId> window_order_;
     std::optional<WindowId> active_window_id_;
 
+    std::unordered_map<wl_surface*, WindowId> surface_to_id_;
+    std::unordered_map<xdg_toplevel*, WindowId> toplevel_to_id_;
+
     std::unordered_map<ListenerId, WindowEventListener> listeners_;
     ListenerId next_listener_id_ = 1;
 };

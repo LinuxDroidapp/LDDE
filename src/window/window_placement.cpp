@@ -6,12 +6,20 @@ namespace ldde::window {
 WindowPlacement::WindowPlacement(PlacementConstraints constraints)
     : constraints_(constraints) {}
 
+core::Rect WindowPlacement::get_usable_area(const display::DisplayPolicy& policy) const noexcept {
+    return policy.available_window_geometry();
+}
+
 core::Rect WindowPlacement::get_usable_area(const display::DisplayInfo& display) const noexcept {
+    if (display.available_geometry.window_bounds.width > 0 && display.available_geometry.window_bounds.height > 0) {
+        return display.available_geometry.window_bounds;
+    }
+
     int32_t x = constraints_.margin_horizontal;
     int32_t y = constraints_.status_bar_height + constraints_.margin_top;
 
-    int32_t total_w = display.width;
-    int32_t total_h = display.height;
+    int32_t total_w = display.width > 0 ? display.width : 720;
+    int32_t total_h = display.height > 0 ? display.height : 1280;
 
     int32_t width = total_w - (constraints_.margin_horizontal * 2);
     int32_t height = total_h - y - constraints_.dock_height - constraints_.margin_bottom;
@@ -20,6 +28,15 @@ core::Rect WindowPlacement::get_usable_area(const display::DisplayInfo& display)
     if (height < 100) height = 100;
 
     return core::Rect{x, y, width, height};
+}
+
+core::Rect WindowPlacement::calculate_initial_geometry(
+    const display::DisplayPolicy& policy,
+    size_t existing_window_count,
+    const core::Size& requested_size,
+    const core::Size& min_size,
+    const core::Size& max_size) const noexcept {
+    return policy.calculate_initial_window_geometry(existing_window_count, requested_size, min_size, max_size);
 }
 
 core::Rect WindowPlacement::calculate_initial_geometry(

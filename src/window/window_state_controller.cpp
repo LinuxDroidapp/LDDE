@@ -6,7 +6,37 @@ namespace ldde::window {
 WindowStateController::WindowStateController(WindowManagementBackend& backend, const WindowPlacement& placement)
     : backend_(backend), placement_(placement) {}
 
+Status WindowStateController::maximize(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
+    if (!window) {
+        return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in maximize");
+    }
+
+    if (window->state() == WindowState::Maximized) {
+        return Status::ok();
+    }
+
+    if (window->state() == WindowState::Normal) {
+        window->set_saved_geometry(window->geometry());
+    }
+
+    core::Rect usable = policy.maximized_geometry();
+    core::Size target_size{usable.width, usable.height};
+
+    auto status = backend_.set_maximized(window->id(), true, target_size);
+    if (status.is_ok()) {
+        window->set_geometry(usable);
+        window->set_state(WindowState::Maximized);
+        LDDE_LOG_INFO(Window, "Window " << window->id() << " maximized to " << usable.width << "x" << usable.height);
+    }
+    return status;
+}
+
 Status WindowStateController::maximize(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
+    if (display.available_geometry.window_bounds.width > 0) {
+        display::DisplayPolicy policy(display);
+        return maximize(window, policy);
+    }
+
     if (!window) {
         return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in maximize");
     }
@@ -32,7 +62,44 @@ Status WindowStateController::maximize(const std::shared_ptr<Window>& window, co
     return status;
 }
 
+Status WindowStateController::restore(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
+    if (!window) {
+        return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in restore");
+    }
+
+    if (window->state() == WindowState::Fullscreen) {
+        return restore_fullscreen(window, policy);
+    }
+
+    if (window->state() == WindowState::Minimized) {
+        return restore_minimized(window);
+    }
+
+    if (window->state() != WindowState::Maximized) {
+        return Status::ok();
+    }
+
+    core::Rect restored_geom = policy.restore_window_geometry(window->saved_geometry(), window->min_size());
+    core::Size target_size{restored_geom.width, restored_geom.height};
+
+    auto status = backend_.set_maximized(window->id(), false, target_size);
+    if (status.is_ok()) {
+        static_cast<void>(backend_.set_geometry(window->id(), restored_geom));
+        window->set_geometry(restored_geom);
+        window->set_state(WindowState::Normal);
+        window->set_saved_geometry(std::nullopt);
+        LDDE_LOG_INFO(Window, "Window " << window->id() << " restored to " << restored_geom.width << "x"
+                              << restored_geom.height << " at (" << restored_geom.x << "," << restored_geom.y << ")");
+    }
+    return status;
+}
+
 Status WindowStateController::restore(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
+    if (display.available_geometry.window_bounds.width > 0) {
+        display::DisplayPolicy policy(display);
+        return restore(window, policy);
+    }
+
     if (!window) {
         return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in restore");
     }
@@ -105,7 +172,7 @@ Status WindowStateController::restore_minimized(const std::shared_ptr<Window>& w
     return status;
 }
 
-Status WindowStateController::fullscreen(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
+Status WindowStateController::fullscreen(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
     if (!window) {
         return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in fullscreen");
     }
@@ -118,8 +185,38 @@ Status WindowStateController::fullscreen(const std::shared_ptr<Window>& window, 
         window->set_saved_geometry(window->geometry());
     }
 
-    int32_t screen_w = display.width;
-    int32_t screen_h = display.height;
+    core::Rect fs_geom = policy.fullscreen_geometry();
+    core::Size screen_size{fs_geom.width, fs_geom.height};
+
+    auto status = backend_.set_fullscreen(window->id(), true, screen_size);
+    if (status.is_ok()) {
+        window->set_geometry(fs_geom);
+        window->set_state(WindowState::Fullscreen);
+        LDDE_LOG_INFO(Window, "Window " << window->id() << " entered fullscreen " << fs_geom.width << "x" << fs_geom.height);
+    }
+    return status;
+}
+
+Status WindowStateController::fullscreen(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
+    if (display.available_geometry.full_bounds.width > 0) {
+        display::DisplayPolicy policy(display);
+        return fullscreen(window, policy);
+    }
+
+    if (!window) {
+        return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in fullscreen");
+    }
+
+    if (window->state() == WindowState::Fullscreen) {
+        return Status::ok();
+    }
+
+    if (window->state() == WindowState::Normal) {
+        window->set_saved_geometry(window->geometry());
+    }
+
+    int32_t screen_w = display.width > 0 ? display.width : 720;
+    int32_t screen_h = display.height > 0 ? display.height : 1280;
     core::Size screen_size{screen_w, screen_h};
 
     auto status = backend_.set_fullscreen(window->id(), true, screen_size);
@@ -131,7 +228,35 @@ Status WindowStateController::fullscreen(const std::shared_ptr<Window>& window, 
     return status;
 }
 
+Status WindowStateController::restore_fullscreen(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
+    if (!window) {
+        return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in restore_fullscreen");
+    }
+
+    if (window->state() != WindowState::Fullscreen) {
+        return Status::ok();
+    }
+
+    core::Rect restored_geom = policy.restore_window_geometry(window->saved_geometry(), window->min_size());
+    core::Size target_size{restored_geom.width, restored_geom.height};
+
+    auto status = backend_.set_fullscreen(window->id(), false, target_size);
+    if (status.is_ok()) {
+        static_cast<void>(backend_.set_geometry(window->id(), restored_geom));
+        window->set_geometry(restored_geom);
+        window->set_state(WindowState::Normal);
+        window->set_saved_geometry(std::nullopt);
+        LDDE_LOG_INFO(Window, "Window " << window->id() << " exited fullscreen to " << target_size.width << "x" << target_size.height);
+    }
+    return status;
+}
+
 Status WindowStateController::restore_fullscreen(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
+    if (display.available_geometry.window_bounds.width > 0) {
+        display::DisplayPolicy policy(display);
+        return restore_fullscreen(window, policy);
+    }
+
     if (!window) {
         return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window in restore_fullscreen");
     }
@@ -159,12 +284,28 @@ Status WindowStateController::restore_fullscreen(const std::shared_ptr<Window>& 
     return status;
 }
 
+Status WindowStateController::toggle_maximize(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
+    if (!window) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window");
+    if (window->state() == WindowState::Maximized) {
+        return restore(window, policy);
+    }
+    return maximize(window, policy);
+}
+
 Status WindowStateController::toggle_maximize(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
     if (!window) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window");
     if (window->state() == WindowState::Maximized) {
         return restore(window, display);
     }
     return maximize(window, display);
+}
+
+Status WindowStateController::toggle_fullscreen(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
+    if (!window) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Null window");
+    if (window->state() == WindowState::Fullscreen) {
+        return restore_fullscreen(window, policy);
+    }
+    return fullscreen(window, policy);
 }
 
 Status WindowStateController::toggle_fullscreen(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
@@ -175,8 +316,39 @@ Status WindowStateController::toggle_fullscreen(const std::shared_ptr<Window>& w
     return fullscreen(window, display);
 }
 
+void WindowStateController::adapt_to_display_change(const std::shared_ptr<Window>& window, const display::DisplayPolicy& policy) {
+    if (!window) return;
+
+    if (window->state() == WindowState::Maximized) {
+        core::Rect max_geom = policy.maximized_geometry();
+        core::Size new_size{max_geom.width, max_geom.height};
+        static_cast<void>(backend_.set_maximized(window->id(), true, new_size));
+        window->set_geometry(max_geom);
+    } else if (window->state() == WindowState::Fullscreen) {
+        core::Rect fs_geom = policy.fullscreen_geometry();
+        static_cast<void>(backend_.set_fullscreen(window->id(), true, core::Size{fs_geom.width, fs_geom.height}));
+        window->set_geometry(fs_geom);
+    } else if (window->state() == WindowState::Normal) {
+        core::Rect clamped = policy.constrain_window_geometry(window->geometry(), window->min_size());
+        if (clamped != window->geometry()) {
+            static_cast<void>(backend_.set_geometry(window->id(), clamped));
+            window->set_geometry(clamped);
+        }
+    }
+
+    if (window->saved_geometry().has_value()) {
+        window->set_saved_geometry(policy.constrain_window_geometry(*window->saved_geometry(), window->min_size()));
+    }
+}
+
 void WindowStateController::adapt_to_display_change(const std::shared_ptr<Window>& window, const display::DisplayInfo& display) {
     if (!window) return;
+
+    if (display.available_geometry.window_bounds.width > 0) {
+        display::DisplayPolicy policy(display);
+        adapt_to_display_change(window, policy);
+        return;
+    }
 
     core::Rect usable = placement_.get_usable_area(display);
 
@@ -193,6 +365,7 @@ void WindowStateController::adapt_to_display_change(const std::shared_ptr<Window
         core::Rect clamped = placement_.clamp_to_usable(window->geometry(), usable);
         if (clamped != window->geometry()) {
             static_cast<void>(backend_.set_geometry(window->id(), clamped));
+            window->set_geometry(clamped);
         }
     }
 

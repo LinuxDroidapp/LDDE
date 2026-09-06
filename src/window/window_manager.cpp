@@ -74,9 +74,22 @@ void WindowManager::shutdown() noexcept {
 void WindowManager::setup_initial_window_placement(const std::shared_ptr<Window>& window) {
     if (!window) return;
 
-    display::DisplayInfo disp = get_active_display(display_mgr_);
-
     size_t count = stacking_.size();
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        core::Rect initial_geom = policy->calculate_initial_window_geometry(
+            count,
+            window->surface_size(),
+            window->min_size(),
+            window->max_size()
+        );
+        window->set_geometry(initial_geom);
+        window->set_surface_size(core::Size{initial_geom.width, initial_geom.height});
+        static_cast<void>(backend_->set_geometry(window->id(), initial_geom));
+        return;
+    }
+
+    display::DisplayInfo disp = get_active_display(display_mgr_);
     core::Rect initial_geom = placement_.calculate_initial_geometry(
         disp,
         count,
@@ -115,7 +128,9 @@ void WindowManager::on_window_event(const WindowEvent& event) {
             focus_.handle_window_removed_or_hidden(event.window_id);
             break;
         }
-        case WindowEventType::StateChanged: {
+        case WindowEventType::StateChanged:
+        case WindowEventType::VisibilityChanged: {
+            stacking_.mark_dirty();
             if (event.window && event.window->state() == WindowState::Minimized) {
                 focus_.handle_window_removed_or_hidden(event.window_id);
             }
@@ -137,6 +152,10 @@ Status WindowManager::maximize(WindowId id) {
     auto win = registry_.lookup(id);
     if (!win) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Window not found");
 
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        return state_ctrl_.maximize(win, *policy);
+    }
     display::DisplayInfo disp = get_active_display(display_mgr_);
     return state_ctrl_.maximize(win, disp);
 }
@@ -145,6 +164,10 @@ Status WindowManager::restore(WindowId id) {
     auto win = registry_.lookup(id);
     if (!win) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Window not found");
 
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        return state_ctrl_.restore(win, *policy);
+    }
     display::DisplayInfo disp = get_active_display(display_mgr_);
     return state_ctrl_.restore(win, disp);
 }
@@ -164,6 +187,10 @@ Status WindowManager::fullscreen(WindowId id) {
     auto win = registry_.lookup(id);
     if (!win) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Window not found");
 
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        return state_ctrl_.fullscreen(win, *policy);
+    }
     display::DisplayInfo disp = get_active_display(display_mgr_);
     return state_ctrl_.fullscreen(win, disp);
 }
@@ -172,6 +199,10 @@ Status WindowManager::toggle_maximize(WindowId id) {
     auto win = registry_.lookup(id);
     if (!win) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Window not found");
 
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        return state_ctrl_.toggle_maximize(win, *policy);
+    }
     display::DisplayInfo disp = get_active_display(display_mgr_);
     return state_ctrl_.toggle_maximize(win, disp);
 }
@@ -180,6 +211,10 @@ Status WindowManager::toggle_fullscreen(WindowId id) {
     auto win = registry_.lookup(id);
     if (!win) return Status::error(core::ErrorCategory::Window, core::ErrorCode::WindowNotFound, "Window not found");
 
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        return state_ctrl_.toggle_fullscreen(win, *policy);
+    }
     display::DisplayInfo disp = get_active_display(display_mgr_);
     return state_ctrl_.toggle_fullscreen(win, disp);
 }
@@ -211,9 +246,14 @@ bool WindowManager::start_move(WindowId id, const core::Point& start_pos, bool i
     }
 
     static_cast<void>(focus_.activate(id));
-    display::DisplayInfo disp = get_active_display(display_mgr_);
-
-    core::Rect usable = placement_.get_usable_area(disp);
+    core::Rect usable;
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        usable = policy->available_window_geometry();
+    } else {
+        display::DisplayInfo disp = get_active_display(display_mgr_);
+        usable = placement_.get_usable_area(disp);
+    }
     return interaction_.start_move(id, start_pos, win->geometry(), usable, is_touch);
 }
 
@@ -256,9 +296,14 @@ bool WindowManager::start_resize(WindowId id, ResizeEdge edge, const core::Point
     }
 
     static_cast<void>(focus_.activate(id));
-    display::DisplayInfo disp = get_active_display(display_mgr_);
-
-    core::Rect usable = placement_.get_usable_area(disp);
+    core::Rect usable;
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        usable = policy->available_window_geometry();
+    } else {
+        display::DisplayInfo disp = get_active_display(display_mgr_);
+        usable = placement_.get_usable_area(disp);
+    }
     return interaction_.start_resize(id, edge, start_pos, win->geometry(), usable, win->min_size(), win->max_size(), is_touch);
 }
 
@@ -297,7 +342,7 @@ core::Rect WindowManager::cancel_resize() {
 }
 
 bool WindowManager::handle_pointer_click(const core::Point& pos, uint32_t timestamp_ms) {
-    auto visible = stacking_.visible_stack(registry_);
+    const auto& visible = stacking_.visible_stack(registry_);
     // Check top to bottom
     for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
         auto win = registry_.lookup(*it);
@@ -334,7 +379,7 @@ bool WindowManager::handle_pointer_click(const core::Point& pos, uint32_t timest
 }
 
 bool WindowManager::handle_touch_tap(const core::Point& pos, uint32_t timestamp_ms) {
-    auto visible = stacking_.visible_stack(registry_);
+    const auto& visible = stacking_.visible_stack(registry_);
     // Check top to bottom with mobile-sized touch margins
     for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
         auto win = registry_.lookup(*it);
@@ -370,7 +415,24 @@ bool WindowManager::handle_touch_tap(const core::Point& pos, uint32_t timestamp_
     return false;
 }
 
+void WindowManager::handle_display_change(const display::DisplayPolicy& policy) {
+    for (const auto& win : registry_.windows()) {
+        if (win) {
+            state_ctrl_.adapt_to_display_change(win, policy);
+        }
+    }
+    LDDE_LOG_INFO(Window, "WindowManager adapted windows to display policy: "
+                          << policy.display_info().width << "x" << policy.display_info().height
+                          << " (" << orientation_name(policy.orientation()) << ")");
+}
+
 void WindowManager::handle_display_change(const display::DisplayInfo& display) {
+    auto* policy = display_mgr_.find_policy_by_id(display.id);
+    if (policy) {
+        handle_display_change(*policy);
+        return;
+    }
+
     for (const auto& win : registry_.windows()) {
         if (win) {
             state_ctrl_.adapt_to_display_change(win, display);
@@ -379,9 +441,22 @@ void WindowManager::handle_display_change(const display::DisplayInfo& display) {
     LDDE_LOG_INFO(Window, "WindowManager adapted windows to display change: " << display.width << "x" << display.height);
 }
 
+void WindowManager::handle_display_removed(display::DisplayId id) {
+    auto* policy = display_mgr_.primary_policy();
+    if (policy) {
+        handle_display_change(*policy);
+    } else {
+        auto primary = display_mgr_.primary_display();
+        if (primary) {
+            handle_display_change(*primary);
+        }
+    }
+    LDDE_LOG_INFO(Window, "WindowManager migrated windows after display " << id << " was removed");
+}
+
 std::vector<std::shared_ptr<Window>> WindowManager::visible_windows() const {
     std::vector<std::shared_ptr<Window>> result;
-    auto visible_ids = stacking_.visible_stack(registry_);
+    const auto& visible_ids = stacking_.visible_stack(registry_);
     result.reserve(visible_ids.size());
 
     for (WindowId id : visible_ids) {

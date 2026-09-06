@@ -34,6 +34,7 @@ public:
     [[nodiscard]] bool prepare_read();
     Status read_events();
     void cancel_read();
+    [[nodiscard]] bool is_reading() const noexcept { return reading_; }
 
     [[nodiscard]] Status check_error() const;
 

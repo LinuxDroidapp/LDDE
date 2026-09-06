@@ -30,6 +30,7 @@ void WindowStacking::add(WindowId id, std::optional<WindowId> parent_id) {
     }
 
     stack_.push_back(id);
+    dirty_ = true;
 }
 
 void WindowStacking::remove(WindowId id) {
@@ -45,6 +46,7 @@ void WindowStacking::remove(WindowId id) {
             parent = std::nullopt;
         }
     }
+    dirty_ = true;
 }
 
 void WindowStacking::raise_internal(WindowId id) {
@@ -52,6 +54,7 @@ void WindowStacking::raise_internal(WindowId id) {
     if (it != stack_.end()) {
         stack_.erase(it);
         stack_.push_back(id);
+        dirty_ = true;
     }
 }
 
@@ -73,6 +76,7 @@ void WindowStacking::raise(WindowId id) {
     for (WindowId child : children) {
         raise(child);
     }
+    dirty_ = true;
 }
 
 void WindowStacking::lower(WindowId id) {
@@ -102,6 +106,7 @@ void WindowStacking::lower(WindowId id) {
             stack_.insert(stack_.begin() + static_cast<std::ptrdiff_t>(insert_idx++), child);
         }
     }
+    dirty_ = true;
 }
 
 bool WindowStacking::contains(WindowId id) const noexcept {
@@ -118,22 +123,24 @@ std::optional<WindowId> WindowStacking::bottom() const noexcept {
     return stack_.front();
 }
 
-std::vector<WindowId> WindowStacking::visible_stack(const WindowRegistry& registry) const {
-    std::vector<WindowId> visible;
-    visible.reserve(stack_.size());
+const std::vector<WindowId>& WindowStacking::visible_stack(const WindowRegistry& registry) const {
+    cached_visible_stack_.clear();
+    cached_visible_stack_.reserve(stack_.size());
 
     for (WindowId id : stack_) {
         auto win = registry.lookup(id);
         if (win && win->state() != WindowState::Minimized && win->is_visible()) {
-            visible.push_back(id);
+            cached_visible_stack_.push_back(id);
         }
     }
-    return visible;
+    return cached_visible_stack_;
 }
 
 void WindowStacking::clear() noexcept {
     stack_.clear();
     parents_.clear();
+    cached_visible_stack_.clear();
+    dirty_ = true;
 }
 
 } // namespace ldde::window

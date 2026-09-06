@@ -21,6 +21,28 @@ namespace ldde::shell {
 
 using core::Status;
 
+enum class ShellDirtyFlag : uint32_t {
+    None = 0,
+    Desktop = 1 << 0,
+    StatusBar = 1 << 1,
+    Dock = 1 << 2,
+    Overlay = 1 << 3,
+    All = Desktop | StatusBar | Dock | Overlay
+};
+
+[[nodiscard]] constexpr ShellDirtyFlag operator|(ShellDirtyFlag a, ShellDirtyFlag b) noexcept {
+    return static_cast<ShellDirtyFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+[[nodiscard]] constexpr ShellDirtyFlag operator&(ShellDirtyFlag a, ShellDirtyFlag b) noexcept {
+    return static_cast<ShellDirtyFlag>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+constexpr ShellDirtyFlag& operator|=(ShellDirtyFlag& a, ShellDirtyFlag b) noexcept {
+    a = a | b;
+    return a;
+}
+
 class Shell {
 public:
     Shell();
@@ -37,6 +59,15 @@ public:
     void shutdown() noexcept;
 
     void update_display(const display::DisplayInfo& info);
+    void update_display_policy(const display::DisplayPolicy& policy);
+
+    // Fine-grained dirty rendering
+    void mark_dirty(ShellDirtyFlag flags) noexcept;
+    void render_dirty();
+    void render_desktop();
+    void render_status_bar();
+    void render_dock();
+    void render_overlay();
     void render_all();
 
     // Input routing & hit testing
@@ -50,9 +81,15 @@ public:
     [[nodiscard]] ShellRegionType focused_region() const noexcept { return focused_region_; }
 
     [[nodiscard]] DesktopSurface& desktop() noexcept { return desktop_; }
+    [[nodiscard]] const DesktopSurface& desktop() const noexcept { return desktop_; }
     [[nodiscard]] StatusRegion& status_region() noexcept { return status_region_; }
+    [[nodiscard]] const StatusRegion& status_region() const noexcept { return status_region_; }
     [[nodiscard]] DockRegion& dock_region() noexcept { return dock_region_; }
+    [[nodiscard]] const DockRegion& dock_region() const noexcept { return dock_region_; }
     [[nodiscard]] ShellOverlay& overlay() noexcept { return overlay_; }
+    [[nodiscard]] const ShellOverlay& overlay() const noexcept { return overlay_; }
+    [[nodiscard]] const ShellTheme& theme() const noexcept { return theme_; }
+    [[nodiscard]] const DesignTokens& tokens() const noexcept { return tokens_; }
 
 private:
     ShellLifecycleState state_ = ShellLifecycleState::Created;
@@ -61,6 +98,7 @@ private:
     ShellLayout layout_;
     ShellRegionType focused_region_ = ShellRegionType::None;
 
+    display::DisplayManager* display_manager_ = nullptr;
     wl_compositor* compositor_ = nullptr;
     wl_subcompositor* subcompositor_ = nullptr;
     wl_shm* shm_ = nullptr;
@@ -75,6 +113,7 @@ private:
     bool status_bar_enabled_ = true;
     bool dock_enabled_ = true;
     DockPosition dock_position_ = DockPosition::Bottom;
+    ShellDirtyFlag dirty_flags_ = ShellDirtyFlag::All;
 
     Status transition_to(ShellLifecycleState next_state);
     Status create_surfaces();
