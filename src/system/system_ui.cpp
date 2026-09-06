@@ -171,3 +171,4 @@ bool SystemUI::handle_key(uint32_t key_symbol, uint32_t state, uint32_t modifier
 }
 
 } // namespace ldde::system
+

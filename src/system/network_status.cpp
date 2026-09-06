@@ -167,3 +167,4 @@ void NetworkStatus::on_changed(NetworkChangedCallback callback) {
 }
 
 } // namespace ldde::system
+

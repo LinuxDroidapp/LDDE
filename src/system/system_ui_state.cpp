@@ -71,3 +71,4 @@ void SystemPanelStateMachine::on_state_changed(StateChangedCallback callback) {
 }
 
 } // namespace ldde::system
+

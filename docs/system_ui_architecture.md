@@ -130,3 +130,4 @@ Quick controls expose actionable tiles within the pop-up/drop-down panel:
 - **D7 Launcher & D9 Switcher**: Mutual exclusion ensures only one overlay surface is visible at a time.
 - **D10 Desktop**: Empty desktop taps dismiss the System UI panel cleanly.
 - **Graceful Degradation**: Zero crashes, exceptions, or shell scripts under PRoot/container environments without battery or sound card.
+

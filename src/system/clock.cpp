@@ -95,3 +95,4 @@ void Clock::on_changed(ClockChangedCallback callback) {
 }
 
 } // namespace ldde::system
+

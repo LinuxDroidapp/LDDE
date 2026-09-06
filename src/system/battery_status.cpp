@@ -128,3 +128,4 @@ void BatteryStatus::on_changed(BatteryChangedCallback callback) {
 }
 
 } // namespace ldde::system
+

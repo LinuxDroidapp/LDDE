@@ -74,3 +74,4 @@ void SessionStatus::on_changed(SessionChangedCallback callback) {
 }
 
 } // namespace ldde::system
+

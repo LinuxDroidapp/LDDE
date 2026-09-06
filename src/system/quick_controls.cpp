@@ -186,3 +186,4 @@ void QuickControlsManager::notify_changed() {
 }
 
 } // namespace ldde::system
+

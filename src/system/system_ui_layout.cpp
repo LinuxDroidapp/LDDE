@@ -115,3 +115,4 @@ int32_t SystemUILayout::hit_test_control(const core::Point& pt) const noexcept {
 }
 
 } // namespace ldde::system
+
