@@ -21,6 +21,28 @@ namespace ldde::shell {
 
 using core::Status;
 
+enum class ShellDirtyFlag : uint32_t {
+    None = 0,
+    Desktop = 1 << 0,
+    StatusBar = 1 << 1,
+    Dock = 1 << 2,
+    Overlay = 1 << 3,
+    All = Desktop | StatusBar | Dock | Overlay
+};
+
+[[nodiscard]] constexpr ShellDirtyFlag operator|(ShellDirtyFlag a, ShellDirtyFlag b) noexcept {
+    return static_cast<ShellDirtyFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+[[nodiscard]] constexpr ShellDirtyFlag operator&(ShellDirtyFlag a, ShellDirtyFlag b) noexcept {
+    return static_cast<ShellDirtyFlag>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+constexpr ShellDirtyFlag& operator|=(ShellDirtyFlag& a, ShellDirtyFlag b) noexcept {
+    a = a | b;
+    return a;
+}
+
 class Shell {
 public:
     Shell();
@@ -38,6 +60,14 @@ public:
 
     void update_display(const display::DisplayInfo& info);
     void update_display_policy(const display::DisplayPolicy& policy);
+
+    // Fine-grained dirty rendering
+    void mark_dirty(ShellDirtyFlag flags) noexcept;
+    void render_dirty();
+    void render_desktop();
+    void render_status_bar();
+    void render_dock();
+    void render_overlay();
     void render_all();
 
     // Input routing & hit testing
@@ -83,6 +113,7 @@ private:
     bool status_bar_enabled_ = true;
     bool dock_enabled_ = true;
     DockPosition dock_position_ = DockPosition::Bottom;
+    ShellDirtyFlag dirty_flags_ = ShellDirtyFlag::All;
 
     Status transition_to(ShellLifecycleState next_state);
     Status create_surfaces();

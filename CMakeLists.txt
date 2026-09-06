@@ -9,7 +9,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(GNUInstallDirs)
 include(CTest)
 
-# Compiler warnings
+# Default build type
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose the build type" FORCE)
+endif()
+
+# Compiler warnings and optimization options
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
         -Wall
@@ -19,7 +24,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wshadow
         $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
         -Werror=return-type
+        -ffunction-sections
+        -fdata-sections
     )
+    add_link_options(-Wl,--gc-sections)
 endif()
 
 # Dependencies

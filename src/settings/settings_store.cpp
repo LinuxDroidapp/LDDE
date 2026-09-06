@@ -67,7 +67,7 @@ core::Status SettingsStore::set(const std::string& key, const SettingsValue& val
     std::string str_val = value.to_string();
     config_.set(def->section(), def->property(), str_val);
 
-    LDDE_LOG_INFO(Settings, "Setting updated: " << key << " = " << str_val);
+    LDDE_LOG_DEBUG(Settings, "Setting updated: " << key << " = " << str_val);
     notify_changed(key, value);
 
     if (auto_persist && !user_config_path_.empty()) {

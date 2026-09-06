@@ -128,7 +128,9 @@ void WindowManager::on_window_event(const WindowEvent& event) {
             focus_.handle_window_removed_or_hidden(event.window_id);
             break;
         }
-        case WindowEventType::StateChanged: {
+        case WindowEventType::StateChanged:
+        case WindowEventType::VisibilityChanged: {
+            stacking_.mark_dirty();
             if (event.window && event.window->state() == WindowState::Minimized) {
                 focus_.handle_window_removed_or_hidden(event.window_id);
             }
@@ -340,7 +342,7 @@ core::Rect WindowManager::cancel_resize() {
 }
 
 bool WindowManager::handle_pointer_click(const core::Point& pos, uint32_t timestamp_ms) {
-    auto visible = stacking_.visible_stack(registry_);
+    const auto& visible = stacking_.visible_stack(registry_);
     // Check top to bottom
     for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
         auto win = registry_.lookup(*it);
@@ -377,7 +379,7 @@ bool WindowManager::handle_pointer_click(const core::Point& pos, uint32_t timest
 }
 
 bool WindowManager::handle_touch_tap(const core::Point& pos, uint32_t timestamp_ms) {
-    auto visible = stacking_.visible_stack(registry_);
+    const auto& visible = stacking_.visible_stack(registry_);
     // Check top to bottom with mobile-sized touch margins
     for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
         auto win = registry_.lookup(*it);
@@ -454,7 +456,7 @@ void WindowManager::handle_display_removed(display::DisplayId id) {
 
 std::vector<std::shared_ptr<Window>> WindowManager::visible_windows() const {
     std::vector<std::shared_ptr<Window>> result;
-    auto visible_ids = stacking_.visible_stack(registry_);
+    const auto& visible_ids = stacking_.visible_stack(registry_);
     result.reserve(visible_ids.size());
 
     for (WindowId id : visible_ids) {

@@ -64,7 +64,7 @@ void WindowFocus::handle_window_removed_or_hidden(WindowId id) {
         active_id_ = std::nullopt;
 
         // Fallback to topmost visible window in the stack
-        auto visible = stacking_.visible_stack(registry_);
+        const auto& visible = stacking_.visible_stack(registry_);
         for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
             if (*it != id) {
                 static_cast<void>(activate(*it));

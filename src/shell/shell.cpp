@@ -271,6 +271,14 @@ void Shell::update_display_policy(const display::DisplayPolicy& policy) {
             if (overlay_.is_active()) {
                 overlay_.update_geometry(layout_.overlay_geometry());
             }
+            if (buffer_pool_) {
+                std::vector<std::pair<int32_t, int32_t>> active_dims;
+                active_dims.emplace_back(layout_.desktop_geometry().width, layout_.desktop_geometry().height);
+                active_dims.emplace_back(layout_.status_geometry().width, layout_.status_geometry().height);
+                active_dims.emplace_back(layout_.dock_geometry().width, layout_.dock_geometry().height);
+                active_dims.emplace_back(layout_.overlay_geometry().width, layout_.overlay_geometry().height);
+                buffer_pool_->prune_stale(active_dims);
+            }
         }
         render_all();
     }
@@ -323,21 +331,60 @@ Status Shell::create_surfaces() {
     return Status::ok();
 }
 
-void Shell::render_all() {
-    if (!buffer_pool_) return;
+void Shell::mark_dirty(ShellDirtyFlag flags) noexcept {
+    dirty_flags_ |= flags;
+}
 
+void Shell::render_desktop() {
+    if (!buffer_pool_) return;
     if (desktop_.is_created()) {
         desktop_.render(*buffer_pool_);
     }
+}
+
+void Shell::render_status_bar() {
+    if (!buffer_pool_) return;
     if (status_bar_enabled_ && status_region_.is_created()) {
         status_region_.render(*buffer_pool_);
     }
+}
+
+void Shell::render_dock() {
+    if (!buffer_pool_) return;
     if (dock_enabled_ && dock_region_.is_created()) {
         dock_region_.render(*buffer_pool_);
     }
-    if (overlay_.is_active() && overlay_.is_created()) {
+}
+
+void Shell::render_overlay() {
+    if (!buffer_pool_) return;
+    if (overlay_.is_created()) {
         overlay_.render(*buffer_pool_);
     }
+}
+
+void Shell::render_dirty() {
+    if (!buffer_pool_ || dirty_flags_ == ShellDirtyFlag::None) return;
+
+    if ((dirty_flags_ & ShellDirtyFlag::Desktop) != ShellDirtyFlag::None) {
+        render_desktop();
+    }
+    if ((dirty_flags_ & ShellDirtyFlag::StatusBar) != ShellDirtyFlag::None) {
+        render_status_bar();
+    }
+    if ((dirty_flags_ & ShellDirtyFlag::Dock) != ShellDirtyFlag::None) {
+        render_dock();
+    }
+    if ((dirty_flags_ & ShellDirtyFlag::Overlay) != ShellDirtyFlag::None) {
+        render_overlay();
+    }
+
+    dirty_flags_ = ShellDirtyFlag::None;
+}
+
+void Shell::render_all() {
+    mark_dirty(ShellDirtyFlag::All);
+    render_dirty();
 }
 
 ShellRegionType Shell::handle_pointer_motion(int32_t x, int32_t y) {

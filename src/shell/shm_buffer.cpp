@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
+#include <algorithm>
 
 #if !defined(MFD_CLOEXEC)
 #define MFD_CLOEXEC 0x0001U
@@ -91,10 +92,24 @@ void ShmBufferPool::release_all() {
 
 std::shared_ptr<ShmBuffer> ShmBufferPool::acquire_buffer(int32_t width, int32_t height) {
     // Look for an available, non-busy buffer matching dimensions
+    size_t matching_count = 0;
+    std::shared_ptr<ShmBuffer> fallback_buf = nullptr;
+
     for (auto& buf : buffers_) {
-        if (!buf->is_busy() && buf->width() == width && buf->height() == height) {
-            return buf;
+        if (buf->width() == width && buf->height() == height) {
+            matching_count++;
+            if (!buf->is_busy()) {
+                return buf;
+            }
+            if (!fallback_buf) {
+                fallback_buf = buf;
+            }
         }
+    }
+
+    // Limit to at most kMaxBuffersPerGeometry buffers to prevent unbounded memory growth
+    if (matching_count >= kMaxBuffersPerGeometry && fallback_buf) {
+        return fallback_buf;
     }
 
     // Allocate new buffer
@@ -103,6 +118,26 @@ std::shared_ptr<ShmBuffer> ShmBufferPool::acquire_buffer(int32_t width, int32_t 
         buffers_.push_back(new_buf);
     }
     return new_buf;
+}
+
+void ShmBufferPool::prune_stale(const std::vector<std::pair<int32_t, int32_t>>& active_dimensions) {
+    auto it = std::remove_if(buffers_.begin(), buffers_.end(), [&](const std::shared_ptr<ShmBuffer>& buf) {
+        if (buf->is_busy()) return false;
+        for (const auto& [w, h] : active_dimensions) {
+            if (buf->width() == w && buf->height() == h) {
+                return false;
+            }
+        }
+        return true;
+    });
+    buffers_.erase(it, buffers_.end());
+}
+
+void ShmBufferPool::prune_idle() {
+    auto it = std::remove_if(buffers_.begin(), buffers_.end(), [](const std::shared_ptr<ShmBuffer>& buf) {
+        return !buf->is_busy() && buf.use_count() <= 1;
+    });
+    buffers_.erase(it, buffers_.end());
 }
 
 std::shared_ptr<ShmBuffer> ShmBufferPool::create_buffer(int32_t width, int32_t height) {

@@ -451,7 +451,8 @@ Status Application::initialize_components() {
     });
 
     dock_.controller().on_request_render([this]() {
-        shell_.render_all();
+        shell_.mark_dirty(shell::ShellDirtyFlag::Dock);
+        shell_.render_dirty();
     });
 
     // Initialize D9 Application Switcher
@@ -528,7 +529,8 @@ Status Application::initialize_components() {
                       settings_manager_.is_open() ||
                       notification_manager_.has_visible_popups();
         shell_.overlay().set_active(active);
-        shell_.render_all();
+        shell_.mark_dirty(shell::ShellDirtyFlag::Overlay);
+        shell_.render_dirty();
     };
 
     notification_manager_.on_request_render(update_overlay_state);
@@ -548,7 +550,16 @@ Status Application::initialize_components() {
 
     settings_manager_.store().on_setting_changed([this](const std::string& key, const settings::SettingsValue& /*val*/) {
         LDDE_LOG_INFO(Core, "Subsystem notified of setting change: " << key);
-        shell_.render_all();
+        if (key.starts_with("dock.")) {
+            shell_.mark_dirty(shell::ShellDirtyFlag::Dock);
+        } else if (key.starts_with("system.")) {
+            shell_.mark_dirty(shell::ShellDirtyFlag::StatusBar);
+        } else if (key.starts_with("desktop.") || key.starts_with("appearance.")) {
+            shell_.mark_dirty(shell::ShellDirtyFlag::Desktop);
+        } else {
+            shell_.mark_dirty(shell::ShellDirtyFlag::Overlay);
+        }
+        shell_.render_dirty();
     });
 
     notification_manager_.center_state().on_state_changed([this, update_overlay_state](notification::NotificationCenterState /*old_state*/, notification::NotificationCenterState new_state) {
@@ -779,9 +790,12 @@ int Application::run() {
     LDDE_LOG_INFO(Core, "Entering LDDE main event loop");
 
     while (lifecycle_.state() == LifecycleState::Running) {
+        bool read_prepared = false;
         // Prepare Wayland read before polling
         if (wayland_connection_.is_connected()) {
-            if (!wayland_connection_.prepare_read()) {
+            if (wayland_connection_.prepare_read()) {
+                read_prepared = true;
+            } else {
                 wayland_connection_.dispatch_pending();
             }
             wayland_connection_.flush();
@@ -789,16 +803,19 @@ int Application::run() {
 
         Status ds = event_loop_.dispatch(100);
         if (ds.is_error()) {
+            if (read_prepared) {
+                wayland_connection_.cancel_read();
+            }
             LDDE_LOG_ERROR(Core, "Event dispatch error: " << ds.to_string());
             break;
         }
 
-        if (wayland_connection_.is_connected()) {
-            wayland_connection_.dispatch_pending();
+        if (read_prepared && wayland_connection_.is_reading()) {
+            wayland_connection_.cancel_read();
         }
 
-        if (server_fd_attached_) {
-            window_tracker_.dispatch_server();
+        if (wayland_connection_.is_connected()) {
+            wayland_connection_.dispatch_pending();
         }
     }
 

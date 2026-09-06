@@ -34,6 +34,7 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_system_ui.cpp
     unit/test_notification.cpp
     unit/test_settings.cpp
+    unit/test_performance.cpp
 )
 
 add_executable(ldde_unit_tests ${LDDE_UNIT_TEST_SOURCES})
@@ -64,4 +65,8 @@ target_link_libraries(ldde_integration_tests PRIVATE
 )
 
 add_test(NAME integration_weston COMMAND ldde_integration_tests)
+
+# Performance Benchmark Executable
+add_executable(ldde_baseline_bench performance/baseline_bench.cpp)
+target_link_libraries(ldde_baseline_bench PRIVATE ldde_core)
 

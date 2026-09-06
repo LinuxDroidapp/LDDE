@@ -40,7 +40,12 @@ core::Status SystemUI::initialize(
 
     controller_->on_request_render([this]() {
         if (shell_) {
-            shell_->render_all();
+            if (state_machine_.is_open()) {
+                shell_->mark_dirty(shell::ShellDirtyFlag::StatusBar | shell::ShellDirtyFlag::Overlay);
+            } else {
+                shell_->mark_dirty(shell::ShellDirtyFlag::StatusBar);
+            }
+            shell_->render_dirty();
         }
     });
 

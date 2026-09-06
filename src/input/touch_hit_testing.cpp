@@ -139,7 +139,7 @@ HitTestResult TouchHitTesting::hit_test(const core::Point& screen_point) const {
     }
 
     // 2. Priority: Topmost window first
-    auto visible = stacking_.visible_stack(registry_);
+    const auto& visible = stacking_.visible_stack(registry_);
     for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
         auto win = registry_.lookup(*it);
         if (!win || !win->is_visible() || win->state() == window::WindowState::Minimized) {

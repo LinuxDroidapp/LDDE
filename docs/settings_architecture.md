@@ -101,3 +101,4 @@ The **Settings Subsystem** provides a centralized, authoritative, touch-first pr
   - `Enter` / `Space`: Toggles booleans or cycles through enum options.
   - `Escape`: Navigates back from category details or closes Settings.
   - Typing printable ASCII characters automatically populates the real-time search field.
+
