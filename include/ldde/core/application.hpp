@@ -26,6 +26,7 @@
 #include "ldde/switcher/switcher.hpp"
 #include "ldde/desktop/desktop.hpp"
 #include "ldde/system/system_ui.hpp"
+#include "ldde/notification/notification_manager.hpp"
 
 namespace ldde::core {
 
@@ -76,6 +77,8 @@ public:
     [[nodiscard]] const desktop::Desktop& desktop() const noexcept { return desktop_; }
     [[nodiscard]] system::SystemUI& system_ui() noexcept { return system_ui_; }
     [[nodiscard]] const system::SystemUI& system_ui() const noexcept { return system_ui_; }
+    [[nodiscard]] notification::NotificationManager& notification_manager() noexcept { return notification_manager_; }
+    [[nodiscard]] const notification::NotificationManager& notification_manager() const noexcept { return notification_manager_; }
 
     [[nodiscard]] static std::optional<CommandLineOptions> parse_args(int argc, char* argv[]);
     static void print_help(std::string_view program_name);
@@ -103,6 +106,7 @@ private:
     switcher::Switcher switcher_;
     desktop::Desktop desktop_;
     system::SystemUI system_ui_;
+    notification::NotificationManager notification_manager_;
 
     CommandLineOptions cli_options_;
     int exit_code_ = 0;

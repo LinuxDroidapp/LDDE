@@ -27,6 +27,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client>=1.20)
 pkg_check_modules(WAYLAND_SERVER REQUIRED wayland-server>=1.20)
 pkg_check_modules(CAIRO REQUIRED cairo>=1.16)
+pkg_check_modules(GIO REQUIRED gio-2.0 gio-unix-2.0)
 find_package(Threads REQUIRED)
 
 # Core Library
@@ -138,6 +139,16 @@ set(LDDE_CORE_SOURCES
     src/system/system_ui_view.cpp
     src/system/system_ui_controller.cpp
     src/system/system_ui.cpp
+    src/notification/notification.cpp
+    src/notification/notification_store.cpp
+    src/notification/internal_notification_backend.cpp
+    src/notification/dbus_notification_backend.cpp
+    src/notification/notification_center_state.cpp
+    src/notification/notification_layout.cpp
+    src/notification/notification_view.cpp
+    src/notification/notification_presenter.cpp
+    src/notification/notification_controller.cpp
+    src/notification/notification_manager.cpp
     src/core/application.cpp
 )
 
@@ -149,12 +160,14 @@ target_include_directories(ldde_core PUBLIC
     ${WAYLAND_CLIENT_INCLUDE_DIRS}
     ${WAYLAND_SERVER_INCLUDE_DIRS}
     ${CAIRO_INCLUDE_DIRS}
+    ${GIO_INCLUDE_DIRS}
 )
 
 target_link_libraries(ldde_core PUBLIC
     ${WAYLAND_CLIENT_LIBRARIES}
     ${WAYLAND_SERVER_LIBRARIES}
     ${CAIRO_LIBRARIES}
+    ${GIO_LIBRARIES}
     Threads::Threads
 )
 

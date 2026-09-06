@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, and **D11 — System UI**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, **D11 — System UI**, and **D12 — Notifications**.
 
 ---
 
@@ -25,6 +25,7 @@ LinuxDroid Runtime
       Weston (Compositor)
         ↓
     LDDE
+    ├── Notifications (org.freedesktop.Notifications D-Bus service, popups/toasts, center panel, swipe dismiss)
     ├── System UI (Status bar clock/network/audio/battery/session, quick controls panel, capability awareness)
     ├── Home/Desktop (Background gradient/glow, Cairo vector surface, empty state, overlay dismiss, swipe-up)
     ├── Application Switcher (MRU tracking, multi-window grouping, Cairo overlay, fast touch/key switching)
@@ -41,16 +42,24 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, and system UI.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, system UI, and notifications.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D11
+## Subsystems in D0 – D12
 
-1. **System UI Subsystem (D11)**:
+1. **Notification Subsystem (D12)**:
+   - **Freedesktop D-Bus Compliance**: Implements `org.freedesktop.Notifications` with `Notify`, `CloseNotification`, `GetCapabilities`, and `GetServerInformation`, emitting `NotificationClosed` and `ActionInvoked` signals.
+   - **Dual Backend Architecture**: Complete asynchronous `DBusNotificationBackend` (via GDBus) paired with an in-memory `InternalNotificationBackend` for unit/integration testing and internal system events.
+   - **Defensive & Bounded Model**: Strict text sanitization (HTML stripping, control character removal, length clamping), monotonic IDs, per-application flood protection, and automatic history eviction.
+   - **Transient Popup Presentation**: Top-anchored toast stack with urgency-based auto-dismiss timers (Critical never auto-dismisses) and queue promotion.
+   - **Notification Center Panel**: Slide-over drawer with historical notifications, empty-state placeholder, and "Clear All" action.
+   - **Touch & Keyboard Navigation**: Card tap for default action, action button tap, horizontal swipe-to-dismiss ($\ge 40\,\text{px}$), outside tap dismiss, and Esc keyboard dismissal.
+   - **Deep System Integration**: Cairo double-buffered rendering on `ShellOverlay`, D3 window activation on default action, D4 display adaptation, and D11 Quick Controls toggle tile.
+2. **System UI Subsystem (D11)**:
    - **Top Status Bar**: Renders time/clock (12h/24h), network status, audio level/mute, battery percentage/state, and session indicator into shell status region.
    - **Quick Controls Dropdown/Popup Panel**: Drop-down card featuring actionable quick controls (Audio mute/volume toggle, Network connectivity, Display info, Session action) with touch and keyboard focus.
    - **Subsystem Capability Awareness**: Strict tracking of `Available`, `Unavailable`, `Unsupported`, and `Error` states with graceful degradation when container/guest environments lack audio or battery hardware.
@@ -235,8 +244,8 @@ dock_bg = #141c2cfa
 - **D8 Dock** *(Completed)*
 - **D9 Application Switcher** *(Completed)*
 - **D10 Home/Desktop** *(Completed)*
-- **D11 System UI**
-- **D12 Notifications**
+- **D11 System UI** *(Completed)*
+- **D12 Notifications** *(Completed)*
 - **D13 Settings**
 - **D14 Performance & UX**
 - **D15 Packaging**

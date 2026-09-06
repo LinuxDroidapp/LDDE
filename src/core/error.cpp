@@ -14,6 +14,7 @@ std::string_view error_category_name(ErrorCategory category) noexcept {
         case ErrorCategory::Switcher:      return "Switcher";
         case ErrorCategory::Desktop:       return "Desktop";
         case ErrorCategory::System:        return "System";
+        case ErrorCategory::Notification:  return "Notification";
         case ErrorCategory::Session:       return "Session";
         case ErrorCategory::Resource:      return "Resource";
         case ErrorCategory::Internal:      return "Internal";
@@ -101,6 +102,12 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::SystemProviderError:          return "SystemProviderError";
         case ErrorCode::SystemControlUnavailable:     return "SystemControlUnavailable";
         case ErrorCode::SystemControlFailed:          return "SystemControlFailed";
+        case ErrorCode::NotificationInitFailed:       return "NotificationInitFailed";
+        case ErrorCode::NotificationBackendUnavailable: return "NotificationBackendUnavailable";
+        case ErrorCode::NotificationInvalidRequest:   return "NotificationInvalidRequest";
+        case ErrorCode::NotificationNotFound:         return "NotificationNotFound";
+        case ErrorCode::NotificationStoreFull:        return "NotificationStoreFull";
+        case ErrorCode::NotificationActionFailed:     return "NotificationActionFailed";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";

@@ -20,6 +20,7 @@ enum class ErrorCategory {
     Switcher,
     Desktop,
     System,
+    Notification,
     Session,
     Resource,
     Internal
@@ -119,6 +120,13 @@ enum class ErrorCode {
     SystemProviderError,
     SystemControlUnavailable,
     SystemControlFailed,
+    // Notifications
+    NotificationInitFailed,
+    NotificationBackendUnavailable,
+    NotificationInvalidRequest,
+    NotificationNotFound,
+    NotificationStoreFull,
+    NotificationActionFailed,
     // Internal
     InvalidArgument,
     NotImplemented,

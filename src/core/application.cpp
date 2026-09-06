@@ -214,20 +214,23 @@ Status Application::initialize_components() {
         if (!seat || !seat->touch() || !touch_interaction_manager_) return;
         auto* tch = seat->touch();
         tch->on_down([this](const input::TouchDownEvent& ev) {
+            int32_t px = static_cast<int32_t>(ev.x);
+            int32_t py = static_cast<int32_t>(ev.y);
+            if (notification_manager_.handle_touch_down(px, py)) {
+                return;
+            }
             if (switcher_.is_open()) {
-                switcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                switcher_.handle_touch_down(px, py);
                 return;
             }
             if (system_ui_.is_panel_open()) {
-                system_ui_.handle_panel_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                system_ui_.handle_panel_touch_down(px, py);
                 return;
             }
             if (launcher_.is_open()) {
-                launcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                launcher_.handle_touch_down(px, py);
                 return;
             }
-            int32_t px = static_cast<int32_t>(ev.x);
-            int32_t py = static_cast<int32_t>(ev.y);
             const auto& status_geom = shell_.layout().status_geometry();
             if (status_geom.contains(core::Point{px, py})) {
                 system_ui_.handle_status_touch_down(px, py);
@@ -247,20 +250,23 @@ Status Application::initialize_components() {
             desktop_.handle_touch_down(px, py);
         });
         tch->on_motion([this](const input::TouchMotionEvent& ev) {
+            int32_t px = static_cast<int32_t>(ev.x);
+            int32_t py = static_cast<int32_t>(ev.y);
+            if (notification_manager_.handle_touch_motion(px, py)) {
+                return;
+            }
             if (switcher_.is_open()) {
-                switcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                switcher_.handle_touch_motion(px, py);
                 return;
             }
             if (system_ui_.is_panel_open()) {
-                system_ui_.handle_panel_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                system_ui_.handle_panel_touch_motion(px, py);
                 return;
             }
             if (launcher_.is_open()) {
-                launcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                launcher_.handle_touch_motion(px, py);
                 return;
             }
-            int32_t px = static_cast<int32_t>(ev.x);
-            int32_t py = static_cast<int32_t>(ev.y);
             const auto& dock_geom = shell_.layout().dock_geometry();
             if (dock_.is_visible() && dock_geom.contains(core::Point{px, py})) {
                 dock_.handle_touch_motion(px - dock_geom.x, py - dock_geom.y);
@@ -275,6 +281,9 @@ Status Application::initialize_components() {
             desktop_.handle_touch_motion(px, py);
         });
         tch->on_up([this](const input::TouchUpEvent& ev) {
+            if (notification_manager_.handle_touch_up(0, 0)) {
+                return;
+            }
             if (switcher_.is_open()) {
                 switcher_.handle_touch_up(0, 0);
                 return;
@@ -295,6 +304,7 @@ Status Application::initialize_components() {
             desktop_.handle_touch_up(0, 0);
         });
         tch->on_cancel([this]() {
+            notification_manager_.handle_touch_cancel();
             if (switcher_.is_open()) {
                 switcher_.handle_touch_cancel();
                 return;
@@ -345,6 +355,7 @@ Status Application::initialize_components() {
             switcher_.update_display_policy(*policy);
             desktop_.update_display_policy(*policy);
             system_ui_.update_display_policy(*policy);
+            notification_manager_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -365,6 +376,7 @@ Status Application::initialize_components() {
                 switcher_.update_display_policy(*policy);
                 desktop_.update_display_policy(*policy);
                 system_ui_.update_display_policy(*policy);
+                notification_manager_.update_display_policy(*policy);
                 if (touch_interaction_manager_) {
                     touch_interaction_manager_->handle_display_change(*policy);
                 }
@@ -428,53 +440,98 @@ Status Application::initialize_components() {
         LDDE_LOG_WARN(System, "Failed to initialize System UI: " << s.to_string());
     }
 
-    // Connect overlay rendering: switcher takes precedence, then system panel, then launcher
+    // Initialize D12 Notifications
+    s = notification_manager_.initialize(shell_, window_manager_, application_catalog_, default_policy, config_, event_loop_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Notification, "Failed to initialize NotificationManager: " << s.to_string());
+    }
+
+    // Connect Quick Controls tile to open Notification Center
+    system_ui_.controls_manager().on_open_notifications([this]() {
+        system_ui_.close_panel();
+        notification_manager_.open_notification_center();
+    });
+
+    // Connect overlay rendering: switcher takes precedence, then notification center, then system panel, then launcher
+    // Popup toasts render on top if visible
     shell_.overlay().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme) {
         if (switcher_.is_open()) {
             switcher_.render(buf, theme, shell_.tokens());
+        } else if (notification_manager_.is_notification_center_open()) {
+            notification_manager_.render_notification_center(buf, theme, shell_.tokens());
         } else if (system_ui_.is_panel_open()) {
             system_ui_.render_panel(buf, theme, shell_.tokens());
         } else if (launcher_.is_open()) {
             launcher_.render(buf, theme, shell_.tokens());
         }
+
+        if (notification_manager_.has_visible_popups()) {
+            notification_manager_.render_popups(buf, theme, shell_.tokens());
+        }
     });
 
-    launcher_.controller().state_machine().on_state_changed([this](launcher::LauncherState /*old_state*/, launcher::LauncherState new_state) {
-        bool active = (new_state != launcher::LauncherState::Closed) || switcher_.is_open() || system_ui_.is_panel_open();
+    auto update_overlay_state = [this]() {
+        bool active = switcher_.is_open() ||
+                      system_ui_.is_panel_open() ||
+                      launcher_.is_open() ||
+                      notification_manager_.is_notification_center_open() ||
+                      notification_manager_.has_visible_popups();
         shell_.overlay().set_active(active);
         shell_.render_all();
-    });
+    };
 
-    launcher_.controller().on_request_render([this]() {
-        if (launcher_.is_open() && !switcher_.is_open() && !system_ui_.is_panel_open()) {
-            shell_.render_all();
-        }
-    });
+    notification_manager_.on_request_render(update_overlay_state);
 
-    switcher_.controller().state_machine().on_state_changed([this](switcher::SwitcherState /*old_state*/, switcher::SwitcherState new_state) {
-        if (new_state != switcher::SwitcherState::Closed) {
-            if (launcher_.is_open()) launcher_.close();
-            if (system_ui_.is_panel_open()) system_ui_.close_panel();
-        }
-        bool active = (new_state != switcher::SwitcherState::Closed) || launcher_.is_open() || system_ui_.is_panel_open();
-        shell_.overlay().set_active(active);
-        shell_.render_all();
-    });
-
-    switcher_.controller().on_request_render([this]() {
-        if (switcher_.is_open()) {
-            shell_.render_all();
-        }
-    });
-
-    system_ui_.state_machine().on_state_changed([this](system::SystemPanelState /*old_state*/, system::SystemPanelState new_state) {
-        if (new_state != system::SystemPanelState::Closed) {
+    notification_manager_.center_state().on_state_changed([this, update_overlay_state](notification::NotificationCenterState /*old_state*/, notification::NotificationCenterState new_state) {
+        if (new_state == notification::NotificationCenterState::Opening || new_state == notification::NotificationCenterState::Open) {
             if (launcher_.is_open()) launcher_.close();
             if (switcher_.is_open()) switcher_.close();
+            if (system_ui_.is_panel_open()) system_ui_.close_panel();
         }
-        bool active = (new_state != system::SystemPanelState::Closed) || switcher_.is_open() || launcher_.is_open();
-        shell_.overlay().set_active(active);
-        shell_.render_all();
+        update_overlay_state();
+    });
+
+    launcher_.controller().state_machine().on_state_changed([this, update_overlay_state](launcher::LauncherState /*old_state*/, launcher::LauncherState new_state) {
+        if (new_state == launcher::LauncherState::Opening || new_state == launcher::LauncherState::Open) {
+            if (notification_manager_.is_notification_center_open()) {
+                notification_manager_.close_notification_center();
+            }
+        }
+        update_overlay_state();
+    });
+
+    launcher_.controller().on_request_render([this, update_overlay_state]() {
+        if (launcher_.is_open() && !switcher_.is_open() && !system_ui_.is_panel_open() && !notification_manager_.is_notification_center_open()) {
+            update_overlay_state();
+        }
+    });
+
+    switcher_.controller().state_machine().on_state_changed([this, update_overlay_state](switcher::SwitcherState /*old_state*/, switcher::SwitcherState new_state) {
+        if (new_state == switcher::SwitcherState::Opening || new_state == switcher::SwitcherState::Open) {
+            if (launcher_.is_open()) launcher_.close();
+            if (system_ui_.is_panel_open()) system_ui_.close_panel();
+            if (notification_manager_.is_notification_center_open()) {
+                notification_manager_.close_notification_center();
+            }
+        }
+        update_overlay_state();
+    });
+
+    switcher_.controller().on_request_render([this, update_overlay_state]() {
+        if (switcher_.is_open()) {
+            update_overlay_state();
+        }
+    });
+
+    system_ui_.state_machine().on_state_changed([this, update_overlay_state](system::SystemPanelState /*old_state*/, system::SystemPanelState new_state) {
+        if (new_state == system::SystemPanelState::Opening || new_state == system::SystemPanelState::Open) {
+            if (launcher_.is_open()) launcher_.close();
+            if (switcher_.is_open()) switcher_.close();
+            if (notification_manager_.is_notification_center_open()) {
+                notification_manager_.close_notification_center();
+            }
+        }
+        update_overlay_state();
     });
 
     // Initialize D10 Home/Desktop
@@ -706,6 +763,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    notification_manager_.shutdown();
     system_ui_.shutdown();
     desktop_.shutdown();
     switcher_.shutdown();

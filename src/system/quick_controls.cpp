@@ -19,6 +19,7 @@ std::string_view control_type_name(ControlType type) noexcept {
         case ControlType::NetworkToggle: return "Network";
         case ControlType::DisplayInfo:   return "Display";
         case ControlType::SessionAction: return "Session";
+        case ControlType::Notifications: return "Notifications";
     }
     return "Unknown";
 }
@@ -96,6 +97,23 @@ void QuickControlsManager::refresh_controls() {
         ctrl.action = [this]() {
             if (data_provider_.session().info().state == SessionState::Active) {
                 // Session toggle state demo
+            }
+        };
+        controls_.push_back(std::move(ctrl));
+    }
+
+    // 5. Notifications control
+    {
+        QuickControl ctrl;
+        ctrl.type = ControlType::Notifications;
+        ctrl.id = "notifications";
+        ctrl.label = "Notifications";
+        ctrl.capability = ControlCapability::Available;
+        ctrl.is_active = false;
+        ctrl.status_text = "Center";
+        ctrl.action = [this]() {
+            if (open_notifications_callback_) {
+                open_notifications_callback_();
             }
         };
         controls_.push_back(std::move(ctrl));

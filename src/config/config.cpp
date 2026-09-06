@@ -92,6 +92,12 @@ void Config::load_defaults() {
     set("system", "show_battery", "true");
     set("system", "status_bar_enabled", "true");
     set("system", "quick_controls_enabled", "true");
+    set("notifications", "enabled", "true");
+    set("notifications", "popup_duration_ms", "5000");
+    set("notifications", "max_visible_popups", "3");
+    set("notifications", "max_history_entries", "50");
+    set("notifications", "grouping_enabled", "true");
+    set("notifications", "critical_persistent", "true");
 
     loaded_sources_.emplace_back("<defaults>");
 }

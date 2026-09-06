@@ -1716,6 +1716,46 @@ TEST_F(WestonIntegrationTest, SystemUIWorkflowWithRealWestonCompositor) {
     app.request_shutdown(0);
 }
 
+TEST_F(WestonIntegrationTest, NotificationWorkflowWithRealWestonCompositor) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char* test_argv[] = { arg0, arg1, arg2 };
+    Status init_status = app.initialize(3, test_argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    // 1. Post a notification through NotificationManager
+    auto notif_id = app.notification_manager().post_system_notification(
+        "Low Storage", "Only 500MB free remaining", ldde::notification::NotificationUrgency::Normal);
+    EXPECT_GT(notif_id, 0u);
+    EXPECT_TRUE(app.notification_manager().has_visible_popups());
+    EXPECT_TRUE(app.shell().overlay().is_active());
+
+    // 2. Open Notification Center
+    app.notification_manager().open_notification_center();
+    EXPECT_TRUE(app.notification_manager().is_notification_center_open());
+    EXPECT_TRUE(app.shell().overlay().is_active());
+
+    // 3. Mutual exclusion: opening launcher closes Notification Center
+    app.launcher().open();
+    EXPECT_TRUE(app.launcher().is_open());
+    EXPECT_FALSE(app.notification_manager().is_notification_center_open());
+
+    // 4. Close launcher
+    app.launcher().close();
+    EXPECT_FALSE(app.launcher().is_open());
+
+    // 5. Dismiss notification
+    app.notification_manager().close_notification(notif_id);
+    EXPECT_FALSE(app.notification_manager().has_visible_popups());
+
+    // Clean shutdown
+    app.notification_manager().shutdown();
+    app.request_shutdown(0);
+}
+
 
 
 
