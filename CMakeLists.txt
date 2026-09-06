@@ -103,6 +103,13 @@ set(LDDE_CORE_SOURCES
     src/launcher/launcher_view.cpp
     src/launcher/launcher_controller.cpp
     src/launcher/launcher.cpp
+    src/dock/dock_state.cpp
+    src/dock/dock_item.cpp
+    src/dock/dock_layout.cpp
+    src/dock/dock_model.cpp
+    src/dock/dock_view.cpp
+    src/dock/dock_controller.cpp
+    src/dock/dock.cpp
     src/core/application.cpp
 )
 

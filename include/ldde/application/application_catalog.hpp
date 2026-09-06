@@ -42,18 +42,18 @@ public:
     void clear();
 
     // Event Subscriptions
-    void on_application_added(ApplicationCallback cb) { on_added_ = std::move(cb); }
-    void on_application_removed(ApplicationCallback cb) { on_removed_ = std::move(cb); }
-    void on_application_changed(ApplicationCallback cb) { on_changed_ = std::move(cb); }
-    void on_catalog_refreshed(CatalogRefreshCallback cb) { on_refreshed_ = std::move(cb); }
+    void on_application_added(ApplicationCallback cb) { on_added_.push_back(std::move(cb)); }
+    void on_application_removed(ApplicationCallback cb) { on_removed_.push_back(std::move(cb)); }
+    void on_application_changed(ApplicationCallback cb) { on_changed_.push_back(std::move(cb)); }
+    void on_catalog_refreshed(CatalogRefreshCallback cb) { on_refreshed_.push_back(std::move(cb)); }
 
 private:
     std::unordered_map<ApplicationId, ApplicationMetadata> applications_;
 
-    ApplicationCallback on_added_;
-    ApplicationCallback on_removed_;
-    ApplicationCallback on_changed_;
-    CatalogRefreshCallback on_refreshed_;
+    std::vector<ApplicationCallback> on_added_;
+    std::vector<ApplicationCallback> on_removed_;
+    std::vector<ApplicationCallback> on_changed_;
+    std::vector<CatalogRefreshCallback> on_refreshed_;
 };
 
 } // namespace ldde::application

@@ -124,23 +124,31 @@ CatalogDiff ApplicationCatalog::update_applications(std::vector<ApplicationMetad
     applications_ = std::move(new_map);
 
     // Notify subscribers
-    if (on_added_) {
-        for (const auto& added_meta : diff.added) {
-            on_added_(added_meta);
+    for (const auto& cb : on_added_) {
+        if (cb) {
+            for (const auto& added_meta : diff.added) {
+                cb(added_meta);
+            }
         }
     }
-    if (on_removed_) {
-        for (const auto& removed_meta : diff.removed) {
-            on_removed_(removed_meta);
+    for (const auto& cb : on_removed_) {
+        if (cb) {
+            for (const auto& removed_meta : diff.removed) {
+                cb(removed_meta);
+            }
         }
     }
-    if (on_changed_) {
-        for (const auto& changed_meta : diff.changed) {
-            on_changed_(changed_meta);
+    for (const auto& cb : on_changed_) {
+        if (cb) {
+            for (const auto& changed_meta : diff.changed) {
+                cb(changed_meta);
+            }
         }
     }
-    if (on_refreshed_) {
-        on_refreshed_(diff);
+    for (const auto& cb : on_refreshed_) {
+        if (cb) {
+            cb(diff);
+        }
     }
 
     return diff;

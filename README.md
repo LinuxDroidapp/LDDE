@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, and **D7 — Application Launcher**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, and **D8 — Dock**.
 
 ---
 
@@ -26,11 +26,12 @@ LinuxDroid Runtime
         ↓
     LDDE
     ├── Desktop Shell Subsystem (Desktop background, status bar, dock, overlay)
-    ├── Window Tracking & Management (WindowRegistry, WindowTracker, WindowManager)
-    ├── Mobile Display Policy (DisplayManager, DisplayPolicy, safe areas)
-    ├── Touch Window Interaction (TouchInteractionManager, gestures, controls)
+    ├── Dock Subsystem (Pinned apps, authoritative running state, multi-window grouping, launcher toggle)
+    ├── Application Launcher (Deterministic state machine, search, grid, launch handoff)
     ├── Application Discovery (Catalog, XDG desktop entry scanner, inotify monitor)
-    └── Application Launcher (Deterministic state machine, search, grid, launch handoff)
+    ├── Touch Window Interaction (TouchInteractionManager, gestures, controls)
+    ├── Window Tracking & Management (WindowRegistry, WindowTracker, WindowManager)
+    └── Mobile Display Policy (DisplayManager, DisplayPolicy, safe areas)
         ↓
   Linux Applications (Wayland Clients)
 ```
@@ -38,16 +39,27 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, and launcher.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, and dock.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D7
+## Subsystems in D0 – D8
 
-1. **Application Launcher Subsystem (D7)**:
+1. **Dock Subsystem (D8)**:
+   - **Authoritative Running State**: Live synchronization with D2 `WindowRegistry` and D3 `WindowManager` (strictly zero process polling, `/proc` scraping, or shell calls).
+   - **Application vs. Window Separation**: Groups multiple windows under their owning application with window count indicators.
+   - **Pinned & Unpinned Management**: Configurable pinned applications via `dock.pinned`, dynamic pinning/unpinning, graceful missing desktop entry handling, and automatic dock presentation/removal of unpinned running apps.
+   - **Integrated Launcher Button**: Leading-edge launcher button triggering `Launcher::toggle()` seamlessly.
+   - **Lifecycle & Window Interaction**:
+     - Not running: launches application via structured `ApplicationLauncher` backend (no `/bin/sh -c`).
+     - Running unfocused or minimized: activates and restores window via `WindowManager`.
+     - Running active: minimizes window to clear desktop space.
+   - **Cairo Vector Rendering**: Floating pill geometry with custom application badges, active glowing indicator, running dots, and minimized alpha blending rendered into shell `DockRegion` `ShmBuffer`.
+   - **Responsive Touch Layout**: Dynamic geometry adhering to D4 `DisplayPolicy` metrics, $\ge 48\,\text{dp}$ touch targets, and horizontal overflow scrolling.
+2. **Application Launcher Subsystem (D7)**:
    - **Deterministic State Machine**: `Closed` ↔ `Opening` ↔ `Open` ↔ `Searching` ↔ `Launching` (with `LaunchFailed` banner) ↔ `Closing`.
    - **Responsive Grid Layout**: Dynamically computes grid columns based on D4 `DisplayPolicy` metrics, margins, and minimum item width ($\ge 48\,\text{dp}$ touch targets).
    - **Freedesktop Icon Resolution**: Thread-safe resolution and LRU caching across standard XDG icon directories and sizes, with fallback Cairo vector badges.

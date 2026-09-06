@@ -68,6 +68,12 @@ void Config::load_defaults() {
     set("launcher", "show_categories", "true");
     set("launcher", "search_enabled", "true");
     set("launcher", "terminal_emulator", "x-terminal-emulator");
+    set("dock", "enabled", "true");
+    set("dock", "position", "bottom");
+    set("dock", "visibility", "visible");
+    set("dock", "pinned", "");
+    set("dock", "item_size", "48");
+    set("dock", "spacing", "8");
 
     loaded_sources_.emplace_back("<defaults>");
 }

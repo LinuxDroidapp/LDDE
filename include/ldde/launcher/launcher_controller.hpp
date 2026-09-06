@@ -48,6 +48,9 @@ public:
     void set_launcher_backend(std::shared_ptr<ApplicationLauncher> backend) {
         launcher_backend_ = std::move(backend);
     }
+    [[nodiscard]] std::shared_ptr<ApplicationLauncher> launcher_backend() const noexcept {
+        return launcher_backend_;
+    }
 
     // Lifecycle / visibility
     core::Status open();

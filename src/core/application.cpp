@@ -218,10 +218,17 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
             }
+            int32_t px = static_cast<int32_t>(ev.x);
+            int32_t py = static_cast<int32_t>(ev.y);
+            const auto& dock_geom = shell_.layout().dock_geometry();
+            if (dock_.is_visible() && dock_geom.contains(core::Point{px, py})) {
+                dock_.handle_touch_down(px - dock_geom.x, py - dock_geom.y);
+                return;
+            }
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_down(
                     ev.id,
-                    core::Point{static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y)},
+                    core::Point{px, py},
                     ev.time_ms);
             }
         });
@@ -230,10 +237,17 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
             }
+            int32_t px = static_cast<int32_t>(ev.x);
+            int32_t py = static_cast<int32_t>(ev.y);
+            const auto& dock_geom = shell_.layout().dock_geometry();
+            if (dock_.is_visible() && dock_geom.contains(core::Point{px, py})) {
+                dock_.handle_touch_motion(px - dock_geom.x, py - dock_geom.y);
+                return;
+            }
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_motion(
                     ev.id,
-                    core::Point{static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y)},
+                    core::Point{px, py},
                     ev.time_ms);
             }
         });
@@ -242,6 +256,7 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_up(0, 0);
                 return;
             }
+            dock_.handle_touch_up(0, 0);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_up(ev.id, ev.time_ms);
             }
@@ -251,6 +266,7 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_cancel();
                 return;
             }
+            dock_.handle_touch_cancel();
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->cancel_active_interaction();
             }
@@ -283,6 +299,7 @@ Status Application::initialize_components() {
         if (policy) {
             window_manager_.handle_display_change(*policy);
             launcher_.update_display_policy(*policy);
+            dock_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -299,6 +316,7 @@ Status Application::initialize_components() {
             auto* policy = display_manager_.find_policy_by_id(primary->id);
             if (policy) {
                 launcher_.update_display_policy(*policy);
+                dock_.update_display_policy(*policy);
                 if (touch_interaction_manager_) {
                     touch_interaction_manager_->handle_display_change(*policy);
                 }
@@ -350,6 +368,21 @@ Status Application::initialize_components() {
         if (launcher_.is_open()) {
             shell_.render_all();
         }
+    });
+
+    // Initialize D8 Dock
+    s = dock_.initialize(application_catalog_, window_registry_, window_manager_, launcher_, default_policy, config_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Dock, "Failed to initialize dock: " << s.to_string());
+    }
+
+    // Connect dock with shell dock_region rendering
+    shell_.dock_region().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme, const shell::DesignTokens& tokens) {
+        dock_.render(buf, theme, tokens);
+    });
+
+    dock_.controller().on_request_render([this]() {
+        shell_.render_all();
     });
 
     return Status::ok();
@@ -573,6 +606,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    dock_.shutdown();
     launcher_.shutdown();
 
     if (application_change_monitor_) {

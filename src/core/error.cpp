@@ -10,6 +10,7 @@ std::string_view error_category_name(ErrorCategory category) noexcept {
         case ErrorCategory::Display:       return "Display";
         case ErrorCategory::Application:   return "Application";
         case ErrorCategory::Window:        return "Window";
+        case ErrorCategory::Dock:          return "Dock";
         case ErrorCategory::Session:       return "Session";
         case ErrorCategory::Resource:      return "Resource";
         case ErrorCategory::Internal:      return "Internal";
@@ -75,6 +76,10 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::LaunchExecutableNotFound:     return "LaunchExecutableNotFound";
         case ErrorCode::LaunchPermissionDenied:       return "LaunchPermissionDenied";
         case ErrorCode::IconNotFound:                 return "IconNotFound";
+        case ErrorCode::DockNotVisible:               return "DockNotVisible";
+        case ErrorCode::DockItemNotFound:             return "DockItemNotFound";
+        case ErrorCode::DockInvalidState:             return "DockInvalidState";
+        case ErrorCode::DockActivationFailed:         return "DockActivationFailed";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";

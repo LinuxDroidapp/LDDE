@@ -16,6 +16,7 @@ enum class ErrorCategory {
     Display,
     Application,
     Window,
+    Dock,
     Session,
     Resource,
     Internal
@@ -89,6 +90,11 @@ enum class ErrorCode {
     LaunchExecutableNotFound,
     LaunchPermissionDenied,
     IconNotFound,
+    // Dock
+    DockNotVisible,
+    DockItemNotFound,
+    DockInvalidState,
+    DockActivationFailed,
     // Internal
     InvalidArgument,
     NotImplemented,
