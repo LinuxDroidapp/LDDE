@@ -177,6 +177,8 @@ section "Test 9: CPack DEB Roundtrip"
 
 if command -v cpack &>/dev/null && command -v dpkg-deb &>/dev/null; then
     DEB_OUT=""
+    # Remove stale .deb files from previous runs to avoid picking up wrong artifact
+    rm -f "${BUILD_DIR}"/*.deb
     # Run CPack from the build dir to produce a .deb
     if (cd "${BUILD_DIR}" && cpack -G DEB --config CPackConfig.cmake > "${BUILD_DIR}/cpack.log" 2>&1); then
         # Find the generated .deb
