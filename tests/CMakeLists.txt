@@ -31,6 +31,7 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_dock.cpp
     unit/test_switcher.cpp
     unit/test_desktop.cpp
+    unit/test_system_ui.cpp
 )
 
 add_executable(ldde_unit_tests ${LDDE_UNIT_TEST_SOURCES})
@@ -50,6 +51,7 @@ add_executable(ldde_integration_tests
     integration/test_dock_integration.cpp
     integration/test_switcher_integration.cpp
     integration/test_desktop_integration.cpp
+    integration/test_system_ui_integration.cpp
 )
 target_link_libraries(ldde_integration_tests PRIVATE
     ldde_core

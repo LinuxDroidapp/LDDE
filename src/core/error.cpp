@@ -13,6 +13,7 @@ std::string_view error_category_name(ErrorCategory category) noexcept {
         case ErrorCategory::Dock:          return "Dock";
         case ErrorCategory::Switcher:      return "Switcher";
         case ErrorCategory::Desktop:       return "Desktop";
+        case ErrorCategory::System:        return "System";
         case ErrorCategory::Session:       return "Session";
         case ErrorCategory::Resource:      return "Resource";
         case ErrorCategory::Internal:      return "Internal";
@@ -95,6 +96,11 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::DesktopDisplayError:          return "DesktopDisplayError";
         case ErrorCode::DesktopConfigurationError:    return "DesktopConfigurationError";
         case ErrorCode::DesktopInvalidState:          return "DesktopInvalidState";
+        case ErrorCode::SystemUIInitializationFailed: return "SystemUIInitializationFailed";
+        case ErrorCode::SystemPanelInvalidState:      return "SystemPanelInvalidState";
+        case ErrorCode::SystemProviderError:          return "SystemProviderError";
+        case ErrorCode::SystemControlUnavailable:     return "SystemControlUnavailable";
+        case ErrorCode::SystemControlFailed:          return "SystemControlFailed";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";

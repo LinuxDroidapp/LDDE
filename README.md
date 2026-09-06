@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, and **D10 — Home/Desktop**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, and **D11 — System UI**.
 
 ---
 
@@ -25,6 +25,7 @@ LinuxDroid Runtime
       Weston (Compositor)
         ↓
     LDDE
+    ├── System UI (Status bar clock/network/audio/battery/session, quick controls panel, capability awareness)
     ├── Home/Desktop (Background gradient/glow, Cairo vector surface, empty state, overlay dismiss, swipe-up)
     ├── Application Switcher (MRU tracking, multi-window grouping, Cairo overlay, fast touch/key switching)
     ├── Dock Subsystem (Pinned apps, authoritative running state, multi-window grouping, launcher toggle)
@@ -40,16 +41,23 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, and home/desktop.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, and system UI.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D10
+## Subsystems in D0 – D11
 
-1. **Home/Desktop Subsystem (D10)**:
+1. **System UI Subsystem (D11)**:
+   - **Top Status Bar**: Renders time/clock (12h/24h), network status, audio level/mute, battery percentage/state, and session indicator into shell status region.
+   - **Quick Controls Dropdown/Popup Panel**: Drop-down card featuring actionable quick controls (Audio mute/volume toggle, Network connectivity, Display info, Session action) with touch and keyboard focus.
+   - **Subsystem Capability Awareness**: Strict tracking of `Available`, `Unavailable`, `Unsupported`, and `Error` states with graceful degradation when container/guest environments lack audio or battery hardware.
+   - **Touch & Gesture Ergonomics**: Status bar tap toggles panel; outside tap or swipe-up gesture dismisses panel; quick control tap activates action.
+   - **Keyboard Navigation**: Esc dismisses; Tab / Shift+Tab and arrow keys navigate; Enter / Space activates selected quick control.
+   - **Responsive & Safe Layout**: Adapts geometry across phone portrait, phone landscape, and tablet orientations while preserving safe-area cutouts and $\ge 48\,\text{dp}$ touch target guidelines.
+2. **Home/Desktop Subsystem (D10)**:
    - **Persistent Desktop Surface**: Base-level Wayland surface rendered via double-buffered Cairo vector graphics into `DesktopSurface`.
    - **Background Styles & Glow**: Solid and linear vertical gradients with configurable top-center ambient wallpaper glow and empty-state branding watermark.
    - **Authoritative Window State Consumption**: Synchronized directly with D2 `WindowRegistry` to track active non-destroyed window counts and evaluate empty/focused desktop state.

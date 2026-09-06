@@ -19,6 +19,7 @@ enum class ErrorCategory {
     Dock,
     Switcher,
     Desktop,
+    System,
     Session,
     Resource,
     Internal
@@ -112,6 +113,12 @@ enum class ErrorCode {
     DesktopDisplayError,
     DesktopConfigurationError,
     DesktopInvalidState,
+    // System UI
+    SystemUIInitializationFailed,
+    SystemPanelInvalidState,
+    SystemProviderError,
+    SystemControlUnavailable,
+    SystemControlFailed,
     // Internal
     InvalidArgument,
     NotImplemented,

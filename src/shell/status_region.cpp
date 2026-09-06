@@ -20,7 +20,11 @@ void StatusRegion::render(ShmBufferPool& pool) {
         return;
     }
 
-    CairoRenderer::render_status_region(*buffer, theme_, tokens_, clock_text_);
+    if (render_callback_) {
+        render_callback_(*buffer, theme_, tokens_);
+    } else {
+        CairoRenderer::render_status_region(*buffer, theme_, tokens_, clock_text_);
+    }
     commit_buffer(buffer);
 }
 

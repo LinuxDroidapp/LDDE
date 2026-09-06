@@ -125,6 +125,19 @@ set(LDDE_CORE_SOURCES
     src/desktop/desktop_view.cpp
     src/desktop/desktop_controller.cpp
     src/desktop/desktop.cpp
+    src/system/clock.cpp
+    src/system/network_status.cpp
+    src/system/audio_status.cpp
+    src/system/battery_status.cpp
+    src/system/display_status.cpp
+    src/system/session_status.cpp
+    src/system/system_data_provider.cpp
+    src/system/quick_controls.cpp
+    src/system/system_ui_state.cpp
+    src/system/system_ui_layout.cpp
+    src/system/system_ui_view.cpp
+    src/system/system_ui_controller.cpp
+    src/system/system_ui.cpp
     src/core/application.cpp
 )
 

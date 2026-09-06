@@ -85,6 +85,13 @@ void Config::load_defaults() {
     set("desktop", "background_color_bottom", "#0a0d14");
     set("desktop", "ambient_glow", "true");
     set("desktop", "show_empty_hint", "true");
+    set("system", "clock_format", "24h");
+    set("system", "show_seconds", "false");
+    set("system", "show_network", "true");
+    set("system", "show_audio", "true");
+    set("system", "show_battery", "true");
+    set("system", "status_bar_enabled", "true");
+    set("system", "quick_controls_enabled", "true");
 
     loaded_sources_.emplace_back("<defaults>");
 }

@@ -21,6 +21,9 @@ TEST(ConfigTest, Defaults) {
     EXPECT_EQ(cfg.get_string_or("desktop", "background_mode", ""), "gradient");
     EXPECT_EQ(cfg.get_string_or("desktop", "background_color", ""), "#121826");
     EXPECT_TRUE(cfg.get_bool_or("desktop", "ambient_glow", false));
+    EXPECT_EQ(cfg.get_string_or("system", "clock_format", ""), "24h");
+    EXPECT_TRUE(cfg.get_bool_or("system", "status_bar_enabled", false));
+    EXPECT_TRUE(cfg.get_bool_or("system", "quick_controls_enabled", false));
     EXPECT_TRUE(cfg.validate().is_ok());
 }
 

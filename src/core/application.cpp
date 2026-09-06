@@ -218,12 +218,21 @@ Status Application::initialize_components() {
                 switcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
             }
+            if (system_ui_.is_panel_open()) {
+                system_ui_.handle_panel_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                return;
+            }
             if (launcher_.is_open()) {
                 launcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
             }
             int32_t px = static_cast<int32_t>(ev.x);
             int32_t py = static_cast<int32_t>(ev.y);
+            const auto& status_geom = shell_.layout().status_geometry();
+            if (status_geom.contains(core::Point{px, py})) {
+                system_ui_.handle_status_touch_down(px, py);
+                return;
+            }
             const auto& dock_geom = shell_.layout().dock_geometry();
             if (dock_.is_visible() && dock_geom.contains(core::Point{px, py})) {
                 dock_.handle_touch_down(px - dock_geom.x, py - dock_geom.y);
@@ -240,6 +249,10 @@ Status Application::initialize_components() {
         tch->on_motion([this](const input::TouchMotionEvent& ev) {
             if (switcher_.is_open()) {
                 switcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                return;
+            }
+            if (system_ui_.is_panel_open()) {
+                system_ui_.handle_panel_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
             }
             if (launcher_.is_open()) {
@@ -266,6 +279,11 @@ Status Application::initialize_components() {
                 switcher_.handle_touch_up(0, 0);
                 return;
             }
+            if (system_ui_.is_panel_open()) {
+                system_ui_.handle_panel_touch_up(0, 0);
+                return;
+            }
+            system_ui_.handle_status_touch_up(0, 0);
             if (launcher_.is_open()) {
                 launcher_.handle_touch_up(0, 0);
                 return;
@@ -279,6 +297,10 @@ Status Application::initialize_components() {
         tch->on_cancel([this]() {
             if (switcher_.is_open()) {
                 switcher_.handle_touch_cancel();
+                return;
+            }
+            if (system_ui_.is_panel_open()) {
+                system_ui_.handle_panel_touch_cancel();
                 return;
             }
             if (launcher_.is_open()) {
@@ -322,6 +344,7 @@ Status Application::initialize_components() {
             dock_.update_display_policy(*policy);
             switcher_.update_display_policy(*policy);
             desktop_.update_display_policy(*policy);
+            system_ui_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -341,6 +364,7 @@ Status Application::initialize_components() {
                 dock_.update_display_policy(*policy);
                 switcher_.update_display_policy(*policy);
                 desktop_.update_display_policy(*policy);
+                system_ui_.update_display_policy(*policy);
                 if (touch_interaction_manager_) {
                     touch_interaction_manager_->handle_display_change(*policy);
                 }
@@ -398,32 +422,41 @@ Status Application::initialize_components() {
         LDDE_LOG_WARN(Switcher, "Failed to initialize switcher: " << s.to_string());
     }
 
-    // Connect overlay rendering: switcher takes precedence over launcher
+    // Initialize D11 System UI
+    s = system_ui_.initialize(shell_, default_policy, config_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(System, "Failed to initialize System UI: " << s.to_string());
+    }
+
+    // Connect overlay rendering: switcher takes precedence, then system panel, then launcher
     shell_.overlay().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme) {
         if (switcher_.is_open()) {
             switcher_.render(buf, theme, shell_.tokens());
+        } else if (system_ui_.is_panel_open()) {
+            system_ui_.render_panel(buf, theme, shell_.tokens());
         } else if (launcher_.is_open()) {
             launcher_.render(buf, theme, shell_.tokens());
         }
     });
 
     launcher_.controller().state_machine().on_state_changed([this](launcher::LauncherState /*old_state*/, launcher::LauncherState new_state) {
-        bool active = (new_state != launcher::LauncherState::Closed) || switcher_.is_open();
+        bool active = (new_state != launcher::LauncherState::Closed) || switcher_.is_open() || system_ui_.is_panel_open();
         shell_.overlay().set_active(active);
         shell_.render_all();
     });
 
     launcher_.controller().on_request_render([this]() {
-        if (launcher_.is_open() && !switcher_.is_open()) {
+        if (launcher_.is_open() && !switcher_.is_open() && !system_ui_.is_panel_open()) {
             shell_.render_all();
         }
     });
 
     switcher_.controller().state_machine().on_state_changed([this](switcher::SwitcherState /*old_state*/, switcher::SwitcherState new_state) {
-        if (new_state != switcher::SwitcherState::Closed && launcher_.is_open()) {
-            launcher_.close();
+        if (new_state != switcher::SwitcherState::Closed) {
+            if (launcher_.is_open()) launcher_.close();
+            if (system_ui_.is_panel_open()) system_ui_.close_panel();
         }
-        bool active = (new_state != switcher::SwitcherState::Closed) || launcher_.is_open();
+        bool active = (new_state != switcher::SwitcherState::Closed) || launcher_.is_open() || system_ui_.is_panel_open();
         shell_.overlay().set_active(active);
         shell_.render_all();
     });
@@ -432,6 +465,16 @@ Status Application::initialize_components() {
         if (switcher_.is_open()) {
             shell_.render_all();
         }
+    });
+
+    system_ui_.state_machine().on_state_changed([this](system::SystemPanelState /*old_state*/, system::SystemPanelState new_state) {
+        if (new_state != system::SystemPanelState::Closed) {
+            if (launcher_.is_open()) launcher_.close();
+            if (switcher_.is_open()) switcher_.close();
+        }
+        bool active = (new_state != system::SystemPanelState::Closed) || switcher_.is_open() || launcher_.is_open();
+        shell_.overlay().set_active(active);
+        shell_.render_all();
     });
 
     // Initialize D10 Home/Desktop
@@ -663,6 +706,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    system_ui_.shutdown();
     desktop_.shutdown();
     switcher_.shutdown();
     dock_.shutdown();

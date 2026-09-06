@@ -1664,6 +1664,59 @@ TEST_F(WestonIntegrationTest, DesktopWorkflowWithRealWestonCompositor) {
     app.request_shutdown(0);
 }
 
+TEST_F(WestonIntegrationTest, SystemUIWorkflowWithRealWestonCompositor) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char* test_argv[] = { arg0, arg1, arg2 };
+    Status init_status = app.initialize(3, test_argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    // 1. Verify status bar created in Shell
+    EXPECT_TRUE(app.shell().status_region().is_created());
+    EXPECT_FALSE(app.system_ui().is_panel_open());
+    EXPECT_FALSE(app.shell().overlay().is_active());
+
+    // 2. Open System Panel via status bar tap
+    EXPECT_TRUE(app.system_ui().handle_status_touch_down(100, 20));
+    EXPECT_TRUE(app.system_ui().handle_status_touch_up(100, 20));
+    EXPECT_TRUE(app.system_ui().is_panel_open());
+    EXPECT_TRUE(app.shell().overlay().is_active());
+
+    // 3. Test quick control interaction (Audio Mute)
+    auto mock_audio = std::make_shared<ldde::system::MockAudioProvider>();
+    ldde::system::AudioInfo ainfo;
+    ainfo.is_available = true;
+    ainfo.is_muted = false;
+    ainfo.volume_percent = 75;
+    ainfo.level = ldde::system::AudioVolumeLevel::High;
+    mock_audio->set_audio_info(ainfo);
+    app.system_ui().data_provider().audio().set_provider(mock_audio);
+
+    const auto* tile0 = app.system_ui().layout().control_tile_geometry(0);
+    ASSERT_NE(tile0, nullptr);
+    int32_t cx = tile0->x + tile0->width / 2;
+    int32_t cy = tile0->y + tile0->height / 2;
+
+    bool initial_muted = app.system_ui().data_provider().audio().info().is_muted;
+    EXPECT_TRUE(app.system_ui().handle_panel_touch_down(cx, cy));
+    EXPECT_TRUE(app.system_ui().handle_panel_touch_up(cx, cy));
+    EXPECT_NE(app.system_ui().data_provider().audio().info().is_muted, initial_muted);
+
+    // 4. Outside-tap to dismiss panel
+    EXPECT_TRUE(app.system_ui().handle_panel_touch_down(10, 1000));
+    EXPECT_TRUE(app.system_ui().handle_panel_touch_up(10, 1000));
+    EXPECT_FALSE(app.system_ui().is_panel_open());
+    EXPECT_FALSE(app.shell().overlay().is_active());
+
+    // Clean shutdown
+    app.system_ui().shutdown();
+    app.request_shutdown(0);
+}
+
+
 
 
 
