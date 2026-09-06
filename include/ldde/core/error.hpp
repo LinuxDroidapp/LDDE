@@ -21,6 +21,7 @@ enum class ErrorCategory {
     Desktop,
     System,
     Notification,
+    Settings,
     Session,
     Resource,
     Internal
@@ -127,6 +128,12 @@ enum class ErrorCode {
     NotificationNotFound,
     NotificationStoreFull,
     NotificationActionFailed,
+    // Settings
+    SettingNotFound,
+    SettingTypeMismatch,
+    SettingValidationFailed,
+    SettingPersistenceFailed,
+    SettingUnsupported,
     // Internal
     InvalidArgument,
     NotImplemented,

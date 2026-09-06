@@ -1756,6 +1756,54 @@ TEST_F(WestonIntegrationTest, NotificationWorkflowWithRealWestonCompositor) {
     app.request_shutdown(0);
 }
 
+TEST_F(WestonIntegrationTest, SettingsWorkflowWithRealWestonCompositor) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char* test_argv[] = { arg0, arg1, arg2 };
+    Status init_status = app.initialize(3, test_argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    EXPECT_TRUE(app.settings_manager().is_initialized());
+    EXPECT_FALSE(app.settings_manager().is_open());
+
+    // 1. Open Settings window
+    app.settings_manager().open();
+    EXPECT_TRUE(app.settings_manager().is_open());
+    EXPECT_TRUE(app.shell().overlay().is_active());
+
+    // 2. Verify authoritative window in registry
+    ASSERT_TRUE(app.settings_manager().window_id().has_value());
+    auto win = app.window_registry().lookup(*app.settings_manager().window_id());
+    ASSERT_NE(win, nullptr);
+    EXPECT_EQ(win->app_id(), "org.linuxdroid.ldde.settings");
+    EXPECT_EQ(win->title(), "Settings");
+    EXPECT_TRUE(win->is_visible());
+
+    // 3. Maximize and Restore
+    app.settings_manager().maximize();
+    EXPECT_TRUE(app.settings_manager().is_maximized());
+
+    app.settings_manager().restore();
+    EXPECT_FALSE(app.settings_manager().is_maximized());
+    EXPECT_TRUE(app.settings_manager().is_open());
+
+    // 4. Update a setting via SettingsStore
+    EXPECT_TRUE(app.settings_manager().store().set("dock.item_size", ldde::settings::SettingsValue(static_cast<int64_t>(56)), false).is_ok());
+    EXPECT_EQ(app.config().get_int_or("dock", "item_size", 48), 56);
+
+    // 5. Close settings
+    app.settings_manager().close();
+    EXPECT_FALSE(app.settings_manager().is_open());
+
+    // Clean shutdown
+    app.settings_manager().shutdown();
+    app.request_shutdown(0);
+}
+
+
 
 
 

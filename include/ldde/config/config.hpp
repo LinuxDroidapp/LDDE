@@ -55,6 +55,13 @@ public:
     [[nodiscard]] int version() const;
     [[nodiscard]] Status validate() const;
 
+    Status save_to_file(const std::string& filepath) const;
+
+    [[nodiscard]] std::vector<std::string> sections() const;
+    [[nodiscard]] std::vector<std::string> section_keys(const std::string& section) const;
+    [[nodiscard]] bool has_section(const std::string& section) const;
+    [[nodiscard]] bool has_key(const std::string& section, const std::string& key) const;
+
     [[nodiscard]] const std::vector<std::string>& loaded_sources() const noexcept {
         return loaded_sources_;
     }

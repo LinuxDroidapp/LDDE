@@ -149,6 +149,16 @@ set(LDDE_CORE_SOURCES
     src/notification/notification_presenter.cpp
     src/notification/notification_controller.cpp
     src/notification/notification_manager.cpp
+    src/settings/settings_types.cpp
+    src/settings/settings_value.cpp
+    src/settings/settings_schema.cpp
+    src/settings/settings_store.cpp
+    src/settings/settings_search.cpp
+    src/settings/settings_navigation.cpp
+    src/settings/settings_layout.cpp
+    src/settings/settings_view.cpp
+    src/settings/settings_controller.cpp
+    src/settings/settings_manager.cpp
     src/core/application.cpp
 )
 

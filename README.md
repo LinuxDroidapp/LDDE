@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, **D11 — System UI**, and **D12 — Notifications**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, **D11 — System UI**, **D12 — Notifications**, and **D13 — Settings**.
 
 ---
 
@@ -25,6 +25,7 @@ LinuxDroid Runtime
       Weston (Compositor)
         ↓
     LDDE
+    ├── Settings (Centralized typed preferences, atomic persistence, adaptive portrait/split Cairo UI)
     ├── Notifications (org.freedesktop.Notifications D-Bus service, popups/toasts, center panel, swipe dismiss)
     ├── System UI (Status bar clock/network/audio/battery/session, quick controls panel, capability awareness)
     ├── Home/Desktop (Background gradient/glow, Cairo vector surface, empty state, overlay dismiss, swipe-up)
@@ -42,16 +43,24 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, system UI, and notifications.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, system UI, notifications, and settings.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D12
+## Subsystems in D0 – D13
 
-1. **Notification Subsystem (D12)**:
+1. **Settings Subsystem (D13)**:
+   - **Centralized & Typed Schema**: Comprehensive typed schema covering 10 categories (Appearance, Display, Windows, Desktop, Dock, Launcher, Input, Notifications, System UI, About) with numerical bounds, enum options, and step validations.
+   - **Transactional & Atomic Persistence**: Backed by `Config` with transaction staging (`begin_transaction`, `commit`, `rollback`) and atomic POSIX persistence via temporary file `fsync` and `rename`.
+   - **Adaptive Cairo Vector UI**: Responsive layout switching seamlessly between mobile portrait (single-pane drill-down with back navigation) and tablet/landscape (dual-pane split view with 210dp sidebar).
+   - **Mobile Touch Targets**: All controls strictly conform to $\ge 48\,\text{dp}$ touch target requirements.
+   - **Authoritative Window Model**: Runs in-process as an authoritative Wayland window (`org.linuxdroid.ldde.settings`) in D2 `WindowRegistry` and D3 `WindowManager`, participating in D9 `Switcher` and D8 `Dock`.
+   - **Launcher & Quick Controls Interception**: Registered in D6 `ApplicationCatalog`; launcher intercepts launches via built-in launch handler; D11 Quick Controls provides a direct Settings tile.
+   - **Event-Driven Runtime Updates**: Dispatches instant change events to owning subsystems on setting updates.
+2. **Notification Subsystem (D12)**:
    - **Freedesktop D-Bus Compliance**: Implements `org.freedesktop.Notifications` with `Notify`, `CloseNotification`, `GetCapabilities`, and `GetServerInformation`, emitting `NotificationClosed` and `ActionInvoked` signals.
    - **Dual Backend Architecture**: Complete asynchronous `DBusNotificationBackend` (via GDBus) paired with an in-memory `InternalNotificationBackend` for unit/integration testing and internal system events.
    - **Defensive & Bounded Model**: Strict text sanitization (HTML stripping, control character removal, length clamping), monotonic IDs, per-application flood protection, and automatic history eviction.

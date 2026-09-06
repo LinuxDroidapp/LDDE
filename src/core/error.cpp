@@ -15,6 +15,7 @@ std::string_view error_category_name(ErrorCategory category) noexcept {
         case ErrorCategory::Desktop:       return "Desktop";
         case ErrorCategory::System:        return "System";
         case ErrorCategory::Notification:  return "Notification";
+        case ErrorCategory::Settings:      return "Settings";
         case ErrorCategory::Session:       return "Session";
         case ErrorCategory::Resource:      return "Resource";
         case ErrorCategory::Internal:      return "Internal";
@@ -108,6 +109,11 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::NotificationNotFound:         return "NotificationNotFound";
         case ErrorCode::NotificationStoreFull:        return "NotificationStoreFull";
         case ErrorCode::NotificationActionFailed:     return "NotificationActionFailed";
+        case ErrorCode::SettingNotFound:              return "SettingNotFound";
+        case ErrorCode::SettingTypeMismatch:          return "SettingTypeMismatch";
+        case ErrorCode::SettingValidationFailed:      return "SettingValidationFailed";
+        case ErrorCode::SettingPersistenceFailed:     return "SettingPersistenceFailed";
+        case ErrorCode::SettingUnsupported:           return "SettingUnsupported";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";

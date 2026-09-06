@@ -34,6 +34,7 @@ enum class LogCategory {
     Display,
     Notification,
     System,
+    Settings,
     Config,
     Ipc,
     Session

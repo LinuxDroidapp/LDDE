@@ -99,6 +99,7 @@ std::string_view log_category_name(LogCategory category) noexcept {
         case LogCategory::Display:      return "DISPLAY";
         case LogCategory::Notification: return "NOTIFICATION";
         case LogCategory::System:       return "SYSTEM";
+        case LogCategory::Settings:     return "SETTINGS";
         case LogCategory::Config:       return "CONFIG";
         case LogCategory::Ipc:          return "IPC";
         case LogCategory::Session:      return "SESSION";
@@ -122,6 +123,7 @@ std::optional<LogCategory> parse_log_category(std::string_view str) noexcept {
     if (upper == "DISPLAY")      return LogCategory::Display;
     if (upper == "NOTIFICATION") return LogCategory::Notification;
     if (upper == "SYSTEM")       return LogCategory::System;
+    if (upper == "SETTINGS")     return LogCategory::Settings;
     if (upper == "CONFIG")       return LogCategory::Config;
     if (upper == "IPC")          return LogCategory::Ipc;
     if (upper == "SESSION")      return LogCategory::Session;

@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
+#include <cerrno>
+#include <unistd.h>
+#include <unordered_set>
 #include <sys/stat.h>
 
 namespace ldde::config {
@@ -334,6 +338,165 @@ Status Config::validate() const {
     }
 
     return Status::ok();
+}
+
+Status Config::save_to_file(const std::string& filepath) const {
+    if (filepath.empty()) {
+        return LDDE_STATUS_ERROR(core::ErrorCategory::Configuration,
+                                 core::ErrorCode::InvalidArgument,
+                                 "Config file path is empty");
+    }
+
+    // 1. Create directory if not exists
+    auto slash_pos = filepath.rfind('/');
+    if (slash_pos != std::string::npos) {
+        std::string dir = filepath.substr(0, slash_pos);
+        if (!dir.empty()) {
+            std::string current_path;
+            std::stringstream ss(dir);
+            std::string part;
+            if (dir[0] == '/') {
+                current_path = "/";
+            }
+            while (std::getline(ss, part, '/')) {
+                if (part.empty()) continue;
+                if (!current_path.empty() && current_path.back() != '/') {
+                    current_path += '/';
+                }
+                current_path += part;
+                struct stat st{};
+                if (stat(current_path.c_str(), &st) != 0) {
+                    if (mkdir(current_path.c_str(), 0755) != 0 && errno != EEXIST) {
+                        return LDDE_STATUS_ERROR(core::ErrorCategory::Configuration,
+                                                 core::ErrorCode::IoError,
+                                                 "Failed to create directory " + current_path + ": " + std::strerror(errno));
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Open temporary file in the same directory for atomic rename
+    std::string temp_template = filepath + ".tmp.XXXXXX";
+    std::vector<char> temp_path_buf(temp_template.begin(), temp_template.end());
+    temp_path_buf.push_back('\0');
+
+    int fd = mkstemp(temp_path_buf.data());
+    if (fd < 0) {
+        return LDDE_STATUS_ERROR(core::ErrorCategory::Configuration,
+                                 core::ErrorCode::IoError,
+                                 "Failed to create temporary config file: " + std::string(std::strerror(errno)));
+    }
+    std::string temp_filepath(temp_path_buf.data());
+
+    // 3. Write INI format
+    std::stringstream ss;
+    ss << "# LinuxDroid Desktop Environment (LDDE) Configuration File\n\n";
+
+    // Standard section order if available
+    std::vector<std::string> standard_sections = {
+        "general", "logging", "display", "input", "application",
+        "launcher", "dock", "switcher", "desktop", "system",
+        "notifications", "window"
+    };
+
+    std::unordered_set<std::string> written_sections;
+    for (const auto& sec : standard_sections) {
+        auto it = values_.find(sec);
+        if (it != values_.end()) {
+            ss << "[" << sec << "]\n";
+            std::vector<std::pair<std::string, std::string>> pairs(it->second.begin(), it->second.end());
+            std::sort(pairs.begin(), pairs.end());
+            for (const auto& [k, v] : pairs) {
+                ss << k << " = " << v << "\n";
+            }
+            ss << "\n";
+            written_sections.insert(sec);
+        }
+    }
+
+    // Any remaining sections
+    std::vector<std::string> other_sections;
+    for (const auto& [sec, _] : values_) {
+        if (written_sections.find(sec) == written_sections.end()) {
+            other_sections.push_back(sec);
+        }
+    }
+    std::sort(other_sections.begin(), other_sections.end());
+    for (const auto& sec : other_sections) {
+        ss << "[" << sec << "]\n";
+        auto it = values_.find(sec);
+        std::vector<std::pair<std::string, std::string>> pairs(it->second.begin(), it->second.end());
+        std::sort(pairs.begin(), pairs.end());
+        for (const auto& [k, v] : pairs) {
+            ss << k << " = " << v << "\n";
+        }
+        ss << "\n";
+    }
+
+    std::string content = ss.str();
+    ssize_t written = write(fd, content.data(), content.size());
+    if (written < 0 || static_cast<size_t>(written) != content.size()) {
+        close(fd);
+        unlink(temp_filepath.c_str());
+        return LDDE_STATUS_ERROR(core::ErrorCategory::Configuration,
+                                 core::ErrorCode::IoError,
+                                 "Failed to write full config to temp file: " + std::string(std::strerror(errno)));
+    }
+
+    // fsync to ensure physical write to storage
+    if (fsync(fd) != 0) {
+        close(fd);
+        unlink(temp_filepath.c_str());
+        return LDDE_STATUS_ERROR(core::ErrorCategory::Configuration,
+                                 core::ErrorCode::IoError,
+                                 "Failed to fsync config file: " + std::string(std::strerror(errno)));
+    }
+
+    close(fd);
+
+    // 4. Atomic rename
+    if (rename(temp_filepath.c_str(), filepath.c_str()) != 0) {
+        unlink(temp_filepath.c_str());
+        return LDDE_STATUS_ERROR(core::ErrorCategory::Configuration,
+                                 core::ErrorCode::IoError,
+                                 "Failed to rename temp config file to " + filepath + ": " + std::string(std::strerror(errno)));
+    }
+
+    return Status::ok();
+}
+
+std::vector<std::string> Config::sections() const {
+    std::vector<std::string> result;
+    result.reserve(values_.size());
+    for (const auto& [sec, _] : values_) {
+        result.push_back(sec);
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+std::vector<std::string> Config::section_keys(const std::string& section) const {
+    std::vector<std::string> result;
+    auto it = values_.find(to_lower(section));
+    if (it != values_.end()) {
+        result.reserve(it->second.size());
+        for (const auto& [key, _] : it->second) {
+            result.push_back(key);
+        }
+        std::sort(result.begin(), result.end());
+    }
+    return result;
+}
+
+bool Config::has_section(const std::string& section) const {
+    return values_.find(to_lower(section)) != values_.end();
+}
+
+bool Config::has_key(const std::string& section, const std::string& key) const {
+    auto it = values_.find(to_lower(section));
+    if (it == values_.end()) return false;
+    return it->second.find(to_lower(key)) != it->second.end();
 }
 
 } // namespace ldde::config

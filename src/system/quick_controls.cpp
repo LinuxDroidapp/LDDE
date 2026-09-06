@@ -20,6 +20,7 @@ std::string_view control_type_name(ControlType type) noexcept {
         case ControlType::DisplayInfo:   return "Display";
         case ControlType::SessionAction: return "Session";
         case ControlType::Notifications: return "Notifications";
+        case ControlType::Settings:      return "Settings";
     }
     return "Unknown";
 }
@@ -114,6 +115,23 @@ void QuickControlsManager::refresh_controls() {
         ctrl.action = [this]() {
             if (open_notifications_callback_) {
                 open_notifications_callback_();
+            }
+        };
+        controls_.push_back(std::move(ctrl));
+    }
+
+    // 6. Settings control
+    {
+        QuickControl ctrl;
+        ctrl.type = ControlType::Settings;
+        ctrl.id = "settings";
+        ctrl.label = "Settings";
+        ctrl.capability = ControlCapability::Available;
+        ctrl.is_active = false;
+        ctrl.status_text = "Preferences";
+        ctrl.action = [this]() {
+            if (open_settings_callback_) {
+                open_settings_callback_();
             }
         };
         controls_.push_back(std::move(ctrl));

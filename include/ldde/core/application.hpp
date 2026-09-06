@@ -27,6 +27,7 @@
 #include "ldde/desktop/desktop.hpp"
 #include "ldde/system/system_ui.hpp"
 #include "ldde/notification/notification_manager.hpp"
+#include "ldde/settings/settings_manager.hpp"
 
 namespace ldde::core {
 
@@ -37,6 +38,7 @@ struct CommandLineOptions {
     std::optional<int> ready_fd;
     bool show_help = false;
     bool show_version = false;
+    bool open_settings = false;
 };
 
 class Application {
@@ -79,6 +81,8 @@ public:
     [[nodiscard]] const system::SystemUI& system_ui() const noexcept { return system_ui_; }
     [[nodiscard]] notification::NotificationManager& notification_manager() noexcept { return notification_manager_; }
     [[nodiscard]] const notification::NotificationManager& notification_manager() const noexcept { return notification_manager_; }
+    [[nodiscard]] settings::SettingsManager& settings_manager() noexcept { return settings_manager_; }
+    [[nodiscard]] const settings::SettingsManager& settings_manager() const noexcept { return settings_manager_; }
 
     [[nodiscard]] static std::optional<CommandLineOptions> parse_args(int argc, char* argv[]);
     static void print_help(std::string_view program_name);
@@ -107,6 +111,7 @@ private:
     desktop::Desktop desktop_;
     system::SystemUI system_ui_;
     notification::NotificationManager notification_manager_;
+    settings::SettingsManager settings_manager_;
 
     CommandLineOptions cli_options_;
     int exit_code_ = 0;

@@ -59,6 +59,25 @@ std::optional<std::string> LinuxSessionApplicationLauncher::resolve_binary_in_pa
 }
 
 LaunchResult LinuxSessionApplicationLauncher::launch(const LaunchRequest& request) {
+    // Check registered built-in handlers first (e.g. Settings)
+    auto it = built_in_handlers_.find(request.id.value());
+    if (it != built_in_handlers_.end()) {
+        if (it->second(request)) {
+            LDDE_LOG_INFO(Launcher, "Executed built-in launch handler for " << request.id.value());
+            return LaunchResult::success(0);
+        }
+    }
+
+    // Also check by executable name (e.g. ldde --settings)
+    if (request.executable == "ldde --settings" || request.executable == "ldde-settings") {
+        for (const auto& [_, handler] : built_in_handlers_) {
+            if (handler && handler(request)) {
+                LDDE_LOG_INFO(Launcher, "Executed built-in launch handler for executable " << request.executable);
+                return LaunchResult::success(0);
+            }
+        }
+    }
+
     if (request.executable.empty()) {
         LDDE_LOG_WARN(Launcher, "Launch request failed: empty executable name");
         return LaunchResult::failure(LaunchStatus::InvalidMetadata, "Empty executable name");

@@ -20,6 +20,8 @@ public:
     explicit LinuxSessionApplicationLauncher(std::string terminal_emulator = "x-terminal-emulator");
     ~LinuxSessionApplicationLauncher() override = default;
 
+    using BuiltInLaunchHandler = std::function<bool(const LaunchRequest&)>;
+
     void set_terminal_emulator(std::string terminal_emulator) {
         terminal_emulator_ = std::move(terminal_emulator);
     }
@@ -28,12 +30,17 @@ public:
         return terminal_emulator_;
     }
 
+    void register_built_in_handler(std::string app_id, BuiltInLaunchHandler handler) {
+        built_in_handlers_[std::move(app_id)] = std::move(handler);
+    }
+
     LaunchResult launch(const LaunchRequest& request) override;
 
     [[nodiscard]] static std::optional<std::string> resolve_binary_in_path(std::string_view binary_name);
 
 private:
     std::string terminal_emulator_;
+    std::unordered_map<std::string, BuiltInLaunchHandler> built_in_handlers_;
 };
 
 class MockApplicationLauncher : public ApplicationLauncher {

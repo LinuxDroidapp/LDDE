@@ -28,6 +28,10 @@ std::optional<CommandLineOptions> Application::parse_args(int argc, char* argv[]
             options.show_version = true;
             return options;
         }
+        if (arg == "-s" || arg == "--settings") {
+            options.open_settings = true;
+            continue;
+        }
         if (arg == "-c" || arg == "--config") {
             if (i + 1 < argc) {
                 options.config_path = argv[++i];
@@ -77,6 +81,7 @@ void Application::print_help(std::string_view program_name) {
               << "Options:\n"
               << "  -h, --help                  Show this help text and exit\n"
               << "  -v, --version               Show version and exit\n"
+              << "  -s, --settings              Open Settings preferences on startup\n"
               << "  -c, --config <path>         Specify path to configuration file\n"
               << "  -l, --log-level <level>     Log level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)\n"
               << "  -d, --wayland-display <name> Wayland display socket name to connect to\n"
@@ -231,6 +236,11 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_down(px, py);
                 return;
             }
+            if (settings_manager_.is_open()) {
+                if (settings_manager_.handle_touch_down(px, py)) {
+                    return;
+                }
+            }
             const auto& status_geom = shell_.layout().status_geometry();
             if (status_geom.contains(core::Point{px, py})) {
                 system_ui_.handle_status_touch_down(px, py);
@@ -267,6 +277,11 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_motion(px, py);
                 return;
             }
+            if (settings_manager_.is_open()) {
+                if (settings_manager_.handle_touch_motion(px, py)) {
+                    return;
+                }
+            }
             const auto& dock_geom = shell_.layout().dock_geometry();
             if (dock_.is_visible() && dock_geom.contains(core::Point{px, py})) {
                 dock_.handle_touch_motion(px - dock_geom.x, py - dock_geom.y);
@@ -297,6 +312,11 @@ Status Application::initialize_components() {
                 launcher_.handle_touch_up(0, 0);
                 return;
             }
+            if (settings_manager_.is_open()) {
+                if (settings_manager_.handle_touch_up(0, 0)) {
+                    return;
+                }
+            }
             dock_.handle_touch_up(0, 0);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_up(ev.id, ev.time_ms);
@@ -315,6 +335,10 @@ Status Application::initialize_components() {
             }
             if (launcher_.is_open()) {
                 launcher_.handle_touch_cancel();
+                return;
+            }
+            if (settings_manager_.is_open()) {
+                settings_manager_.handle_touch_cancel();
                 return;
             }
             dock_.handle_touch_cancel();
@@ -356,6 +380,7 @@ Status Application::initialize_components() {
             desktop_.update_display_policy(*policy);
             system_ui_.update_display_policy(*policy);
             notification_manager_.update_display_policy(*policy);
+            settings_manager_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -377,6 +402,7 @@ Status Application::initialize_components() {
                 desktop_.update_display_policy(*policy);
                 system_ui_.update_display_policy(*policy);
                 notification_manager_.update_display_policy(*policy);
+                settings_manager_.update_display_policy(*policy);
                 if (touch_interaction_manager_) {
                     touch_interaction_manager_->handle_display_change(*policy);
                 }
@@ -446,15 +472,39 @@ Status Application::initialize_components() {
         LDDE_LOG_WARN(Notification, "Failed to initialize NotificationManager: " << s.to_string());
     }
 
-    // Connect Quick Controls tile to open Notification Center
+    // Initialize D13 Settings
+    s = settings_manager_.initialize(shell_, window_registry_, window_manager_, application_catalog_, default_policy, config_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Settings, "Failed to initialize SettingsManager: " << s.to_string());
+    }
+
+    // Connect built-in launcher interception for org.linuxdroid.ldde.settings
+    if (auto* backend = dynamic_cast<launcher::LinuxSessionApplicationLauncher*>(launcher_.controller().launcher_backend().get())) {
+        backend->register_built_in_handler("org.linuxdroid.ldde.settings", [this](const launcher::LaunchRequest&) {
+            if (launcher_.is_open()) launcher_.close();
+            settings_manager_.open();
+            return true;
+        });
+    }
+
+    // Connect Quick Controls tiles
     system_ui_.controls_manager().on_open_notifications([this]() {
         system_ui_.close_panel();
         notification_manager_.open_notification_center();
     });
 
+    system_ui_.controls_manager().on_open_settings([this]() {
+        system_ui_.close_panel();
+        settings_manager_.open();
+    });
+
     // Connect overlay rendering: switcher takes precedence, then notification center, then system panel, then launcher
     // Popup toasts render on top if visible
     shell_.overlay().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme) {
+        if (settings_manager_.is_open()) {
+            settings_manager_.render(buf, theme, shell_.tokens());
+        }
+
         if (switcher_.is_open()) {
             switcher_.render(buf, theme, shell_.tokens());
         } else if (notification_manager_.is_notification_center_open()) {
@@ -475,12 +525,31 @@ Status Application::initialize_components() {
                       system_ui_.is_panel_open() ||
                       launcher_.is_open() ||
                       notification_manager_.is_notification_center_open() ||
+                      settings_manager_.is_open() ||
                       notification_manager_.has_visible_popups();
         shell_.overlay().set_active(active);
         shell_.render_all();
     };
 
     notification_manager_.on_request_render(update_overlay_state);
+    settings_manager_.on_request_render(update_overlay_state);
+
+    settings_manager_.on_state_changed([this, update_overlay_state](settings::SettingsWindowMode new_mode) {
+        if (new_mode == settings::SettingsWindowMode::Normal || new_mode == settings::SettingsWindowMode::Maximized) {
+            if (launcher_.is_open()) launcher_.close();
+            if (switcher_.is_open()) switcher_.close();
+            if (system_ui_.is_panel_open()) system_ui_.close_panel();
+            if (notification_manager_.is_notification_center_open()) {
+                notification_manager_.close_notification_center();
+            }
+        }
+        update_overlay_state();
+    });
+
+    settings_manager_.store().on_setting_changed([this](const std::string& key, const settings::SettingsValue& /*val*/) {
+        LDDE_LOG_INFO(Core, "Subsystem notified of setting change: " << key);
+        shell_.render_all();
+    });
 
     notification_manager_.center_state().on_state_changed([this, update_overlay_state](notification::NotificationCenterState /*old_state*/, notification::NotificationCenterState new_state) {
         if (new_state == notification::NotificationCenterState::Opening || new_state == notification::NotificationCenterState::Open) {
@@ -610,6 +679,10 @@ Status Application::establish_readiness() {
     s = readiness_manager_.report_ready();
     if (s.is_error()) {
         LDDE_LOG_WARN(Core, "Readiness reporting warning: " << s.to_string());
+    }
+
+    if (cli_options_.open_settings) {
+        settings_manager_.open();
     }
 
     LDDE_LOG_INFO(Core, "LDDE D0 Foundation reached READY state");
@@ -763,6 +836,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    settings_manager_.shutdown();
     notification_manager_.shutdown();
     system_ui_.shutdown();
     desktop_.shutdown();

@@ -24,7 +24,8 @@ enum class ControlType {
     NetworkToggle,
     DisplayInfo,
     SessionAction,
-    Notifications
+    Notifications,
+    Settings
 };
 
 [[nodiscard]] std::string_view control_type_name(ControlType type) noexcept;
@@ -44,11 +45,13 @@ class QuickControlsManager {
 public:
     using ControlsChangedCallback = std::function<void()>;
     using OpenNotificationsCallback = std::function<void()>;
+    using OpenSettingsCallback = std::function<void()>;
 
     explicit QuickControlsManager(SystemDataProvider& data_provider);
 
     void refresh_controls();
     void on_open_notifications(OpenNotificationsCallback cb) { open_notifications_callback_ = std::move(cb); }
+    void on_open_settings(OpenSettingsCallback cb) { open_settings_callback_ = std::move(cb); }
 
     [[nodiscard]] const std::vector<QuickControl>& controls() const noexcept { return controls_; }
     [[nodiscard]] size_t control_count() const noexcept { return controls_.size(); }
@@ -79,6 +82,7 @@ private:
     int32_t selected_index_ = 0;
     std::vector<ControlsChangedCallback> callbacks_;
     OpenNotificationsCallback open_notifications_callback_;
+    OpenSettingsCallback open_settings_callback_;
 };
 
 } // namespace ldde::system
