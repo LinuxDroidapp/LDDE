@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=LDDE
+Comment=LinuxDroid Desktop Environment — Wayland shell for LinuxDroid
+Exec=ldde
+TryExec=ldde
+Type=Application
+DesktopNames=LDDE

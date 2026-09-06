@@ -1,0 +1,13 @@
+linuxdroid-desktop-environment (1.0.0) stable; urgency=medium
+
+  * D15: Production packaging release — D0–D14 complete.
+  * Full Wayland shell: launcher, dock, switcher, home, system UI, notifications, settings.
+  * D14 performance hardening: bounded SHM buffer pooling, selective dirty rendering,
+    zero-allocation launcher search, O(1) window registry lookups, debounced settings persistence.
+  * D13 settings subsystem: centralized persistent configuration with live reload.
+  * D12 notifications: D-Bus org.freedesktop.Notifications implementation.
+  * Wayland session entry installed to /usr/share/wayland-sessions/ldde.desktop.
+  * System config installed to /etc/linuxdroid/desktop.conf (preserved on upgrade).
+  * CPack DEB packaging support added.
+
+ -- LinuxDroid Team <hello@linuxdroid.dev>  Sat, 06 Sep 2025 00:00:00 +0000

@@ -1,0 +1,38 @@
+Source: linuxdroid-desktop-environment
+Section: x11
+Priority: optional
+Maintainer: LinuxDroid Team <hello@linuxdroid.dev>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.20),
+               pkg-config,
+               libwayland-dev (>= 1.20),
+               libcairo2-dev (>= 1.16),
+               libglib2.0-dev (>= 2.60),
+               libgio-2.0-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/linuxdroid/ldde
+
+Package: linuxdroid-desktop-environment
+Architecture: arm64
+Depends: ${shlibs:Depends}, ${misc:Depends},
+         libwayland-client0 (>= 1.20),
+         libcairo2 (>= 1.16.0),
+         libglib2.0-0 (>= 2.60)
+Recommends: weston (>= 10.0)
+Suggests: linuxdroid-lddm
+Description: LinuxDroid Desktop Environment — Wayland shell for LinuxDroid
+ LDDE is a production-grade, minimal, Linux-native Wayland desktop
+ environment designed mobile-first for Linux running through LinuxDroid.
+ .
+ It provides a complete Wayland compositor shell including:
+  - Application launcher with search and category filtering
+  - Persistent dock with running-app indicators
+  - Window manager with mobile-optimized touch interaction
+  - Application switcher with MRU ordering
+  - Notification center with D-Bus integration
+  - System UI with status bar, quick controls, and clock
+  - Centralized settings subsystem
+ .
+ LDDE integrates with LDDM (LinuxDroid Display Manager) and Weston
+ as a Wayland client shell. It is strictly a Wayland client; it does
+ not require X11, framebuffer, or Android APIs.

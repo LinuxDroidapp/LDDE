@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, **D11 — System UI**, **D12 — Notifications**, **D13 — Settings**, and **D14 — Performance & UX**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, **D10 — Home/Desktop**, **D11 — System UI**, **D12 — Notifications**, **D13 — Settings**, **D14 — Performance & UX**, and **D15 — Packaging**.
 
 ---
 
@@ -25,6 +25,7 @@ LinuxDroid Runtime
       Weston (Compositor)
         ↓
     LDDE
+    ├── Packaging (D15: .deb package, Wayland session entry, CPack, debian/, conffile safety)
     ├── Performance & UX (Selective surface damage, capped SHM pools, zero-alloc search, O(1) lookups)
     ├── Settings (Centralized typed preferences, atomic persistence, adaptive portrait/split Cairo UI)
     ├── Notifications (org.freedesktop.Notifications D-Bus service, popups/toasts, center panel, swipe dismiss)
@@ -44,16 +45,27 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, system UI, notifications, settings, and performance hardening.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, home/desktop, system UI, notifications, settings, performance hardening, and production packaging.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D14
+## Subsystems in D0 – D15
 
-1. **Performance & UX Subsystem (D14)**:
+1. **Packaging Subsystem (D15)**:
+   - **Version Unification**: Authoritative version `1.0.0` declared once in `CMakeLists.txt`; generated into `include/ldde/version.hpp` via `configure_file()` — eliminates version drift across source files.
+   - **Debian Package (`linuxdroid-desktop-environment`)**: Production `.deb` via CPack DEB generator; correct `Architecture: arm64` for primary target; installs binary, session entry, config, docs, version manifest, and headers.
+   - **Wayland Session Entry**: `data/ldde.desktop` installed to `/usr/share/wayland-sessions/` — standard LDDM and display manager discovery path.
+   - **Conffile Safety**: `/etc/linuxdroid/desktop.conf` registered as dpkg conffile — admin customizations are preserved across upgrades; `postinst` only creates config if absent; `prerm` never removes it.
+   - **Complete Debian Source Packaging**: `debian/` directory with `control`, `changelog`, `rules`, `copyright`, `conffiles`, `postinst`, `prerm`, and `source/format` for `dpkg-buildpackage` compatibility.
+   - **Release Script (`scripts/package.sh`)**: One-command build → package → output `.deb` with full install staging and CPack invocation.
+   - **Validation Script (`scripts/validate-package.sh`)**: Automated `.deb` inspection covering metadata, required files, binary type, conffiles list, maintainer scripts, session file validity, and version manifest consistency.
+   - **Packaging Test Suite (`tests/packaging/test_packaging.sh`)**: 11-stage test covering configure, version header generation, build, staged install, version manifest, session file, config file, Debian control, dpkg-deb roundtrip, unit tests, and integration tests.
+   - **Documentation (`docs/packaging.md`)**: Complete packaging guide covering build, release, cross-compilation, upgrade safety table, and file layout.
+
+2. **Performance & UX Subsystem (D14)**:
    - **Selective Surface Damage (`ShellDirtyFlag`)**: Fine-grained bitmask (`Desktop`, `StatusBar`, `Dock`, `Overlay`) eliminating full-desktop redraws; isolated status-bar clock ticks and notification toasts.
    - **Zero Buffer Ballooning (`ShmBufferPool`)**: Capped buffer pool ($\le 3$ buffers per geometry) with stale/idle pruning; RSS dropped from 177.8 MB to **22.69 MB** across repeated redraws (-87.2% reduction).
    - **Optimized Wayland Event Loop**: Non-blocking `prepare_read_queue` and clean `cancel_read` handling; eliminated redundant server dispatches and busy wakeups.

@@ -1,13 +1,34 @@
 cmake_minimum_required(VERSION 3.20)
-project(LDDE VERSION 0.1.0 LANGUAGES C CXX)
+project(LDDE VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+
 include(GNUInstallDirs)
 include(CTest)
+
+# GNUInstallDirs sets SYSCONFDIR to ${prefix}/etc, but when prefix is /usr
+# the config must go to /etc (not /usr/etc). Override to follow Debian FHS conventions.
+if(CMAKE_INSTALL_PREFIX STREQUAL "/usr" AND NOT CMAKE_INSTALL_SYSCONFDIR)
+    set(CMAKE_INSTALL_SYSCONFDIR "/etc"
+        CACHE PATH "System configuration directory (override for /usr prefix)" FORCE)
+endif()
+
+# Version variables derived from project() — single source of truth
+set(LDDE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(LDDE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(LDDE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+
+# Generate version header from template (avoids version string drift)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/LDDEVersion.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/ldde/version.hpp
+    @ONLY
+)
+
 
 # Default build type
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -174,6 +195,7 @@ add_library(ldde_core STATIC ${LDDE_CORE_SOURCES})
 
 target_include_directories(ldde_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     ${WAYLAND_CLIENT_INCLUDE_DIRS}
     ${WAYLAND_SERVER_INCLUDE_DIRS}
@@ -198,22 +220,121 @@ if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
-# Installation rules
+
+# =============================================================================
+# Installation Rules
+# =============================================================================
+
+# Binary
 install(TARGETS ldde
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Static library (for SDK consumers)
 install(TARGETS ldde_core
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde
 )
 
+# Public headers (source tree)
 install(DIRECTORY include/ldde
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp"
 )
 
+# Generated version header
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/ldde/version.hpp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ldde
+)
+
+# Wayland session entry (discovered by LDDM and other display managers)
+install(FILES data/ldde.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions
+)
+
+# System default configuration (marked as conffile — dpkg preserves admin edits on upgrade)
+# Installs as desktop.conf (the real default); package preinst creates it only if absent
 install(FILES config/desktop.conf.example
     DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/linuxdroid
-    RENAME desktop.conf.example
+    RENAME desktop.conf
 )
 
+# Documentation — use Debian-standard path with package name, not project name
+set(LDDE_DOCDIR "share/doc/linuxdroid-desktop-environment")
+install(FILES README.md
+    DESTINATION ${LDDE_DOCDIR}
+    RENAME README.md
+)
+install(FILES LICENSE
+    DESTINATION ${LDDE_DOCDIR}
+)
+
+# Version manifest (machine-readable, installed alongside binary)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/version
+    "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}\n"
+)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/linuxdroid/ldde
+)
+
+# =============================================================================
+# CPack — Debian .deb packaging
+# =============================================================================
+
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "linuxdroid-desktop-environment")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "LinuxDroid Desktop Environment — Wayland shell for LinuxDroid")
+set(CPACK_PACKAGE_DESCRIPTION
+    "LDDE is a production-grade, minimal, Linux-native Wayland desktop environment \
+designed mobile-first for Linux running through LinuxDroid. It provides a complete \
+Wayland compositor shell including application launcher, dock, window manager, \
+notification center, and settings subsystem.")
+set(CPACK_PACKAGE_VENDOR "LinuxDroid")
+set(CPACK_PACKAGE_CONTACT "LinuxDroid Team <hello@linuxdroid.dev>")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/linuxdroid/ldde")
+
+# Architecture: set to native unless cross-compiling
+if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+else()
+    execute_process(
+        COMMAND dpkg --print-architecture
+        OUTPUT_VARIABLE _DEB_ARCH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_DEB_ARCH)
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${_DEB_ARCH}")
+    else()
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+    endif()
+endif()
+
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "libwayland-client0 (>= 1.20), libcairo2 (>= 1.16.0), libglib2.0-0 (>= 2.60)")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "weston (>= 10.0)")
+set(CPACK_DEBIAN_PACKAGE_SUGGESTS "linuxdroid-lddm")
+set(CPACK_DEBIAN_PACKAGE_SECTION "x11")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+
+# Conffiles: dpkg will prompt before overwriting admin-modified config
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${CMAKE_CURRENT_SOURCE_DIR}/debian/conffiles"
+    "${CMAKE_CURRENT_SOURCE_DIR}/debian/postinst"
+    "${CMAKE_CURRENT_SOURCE_DIR}/debian/prerm"
+)
+
+# Output filename: linuxdroid-desktop-environment_1.0.0_arm64.deb
+set(CPACK_PACKAGE_FILE_NAME
+    "${CPACK_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+
+set(CPACK_STRIP_FILES TRUE)
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+
+# include(CPack) must come LAST — it reads all CPACK_* variables at include time
+include(CPack)

@@ -1,0 +1,31 @@
+#!/bin/sh
+# postinst — post-installation maintainer script for linuxdroid-desktop-environment
+set -e
+
+CONF_DIR=/etc/linuxdroid
+CONF_FILE="${CONF_DIR}/desktop.conf"
+
+case "$1" in
+    configure)
+        # Ensure /etc/linuxdroid directory exists
+        if [ ! -d "${CONF_DIR}" ]; then
+            mkdir -p "${CONF_DIR}"
+        fi
+
+        # Install default config only if no config exists yet.
+        # Never overwrite existing admin configuration.
+        # (dpkg's conffile mechanism handles upgrades for the tracked conffile.)
+        if [ ! -f "${CONF_FILE}" ]; then
+            echo "linuxdroid-desktop-environment: installing default config to ${CONF_FILE}"
+            install -m 0644 /etc/linuxdroid/desktop.conf "${CONF_FILE}" 2>/dev/null || true
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument: '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

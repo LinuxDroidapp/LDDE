@@ -332,7 +332,7 @@ void DBusNotificationBackend::handle_method_call(
             g_variant_new("(ssss)",
                           "LinuxDroid LDDE Notification Daemon",
                           "LinuxDroid",
-                          "0.1.0",
+                          "1.0.0",
                           "1.2"));
         return;
     }
