@@ -16,16 +16,27 @@
 #include <fstream>
 #include "ldde/display/display_policy.hpp"
 #include "ldde/input/touch_interaction_manager.hpp"
+#include "ldde/application/application_id.hpp"
+#include "ldde/application/application_metadata.hpp"
+#include "ldde/application/desktop_entry_parser.hpp"
+#include "ldde/application/desktop_entry_reader.hpp"
+#include "ldde/application/desktop_entry_source.hpp"
+#include "ldde/application/application_catalog.hpp"
+#include "ldde/launcher/launcher.hpp"
+#include "ldde/launcher/application_launcher.hpp"
 
 using namespace ldde::core;
 using namespace ldde::shell;
 using namespace ldde::window;
 using namespace ldde::display;
 using namespace ldde::input;
+using namespace ldde::application;
+using namespace ldde::launcher;
 
 namespace core = ldde::core;
 namespace display = ldde::display;
 namespace input = ldde::input;
+namespace application = ldde::application;
 
 class WestonIntegrationTest : public ::testing::Test {
 protected:
@@ -1051,5 +1062,192 @@ TEST_F(WestonIntegrationTest, WestonRealTouchWindowInteraction) {
 
     app.request_shutdown(0);
 }
+
+TEST_F(WestonIntegrationTest, LauncherWorkflowAndRealWindowDiscovery) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    std::string app_sock = app.window_tracker().application_socket_name();
+    EXPECT_FALSE(app_sock.empty());
+
+    // 1. Verify launcher initial state
+    EXPECT_FALSE(app.launcher().is_open());
+    EXPECT_EQ(app.launcher().state(), LauncherState::Closed);
+    EXPECT_FALSE(app.shell().overlay().is_active());
+
+    // 2. Populate catalog with an application
+    std::string desktop_entry_content =
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Test Client App\n"
+        "GenericName=Wayland Client\n"
+        "Exec=test_client_app\n"
+        "Categories=Utility;Development;\n"
+        "Keywords=test;wayland;\n";
+
+    auto parsed_entry = application::DesktopEntryParser::parse(desktop_entry_content);
+    ASSERT_TRUE(parsed_entry.is_ok());
+    application::DesktopEntrySource src{"/usr/share/applications/test_client.desktop",
+                                        application::DesktopEntrySourceType::System, 10};
+    auto meta = application::ApplicationMetadata::from_desktop_entry(
+        application::ApplicationId("test_client.desktop"), parsed_entry.value(), src);
+    ASSERT_TRUE(meta.is_ok());
+
+    std::vector<application::ApplicationMetadata> apps = {meta.value()};
+    app.application_catalog().update_applications(apps);
+
+    // Launcher immediately receives catalog update
+    EXPECT_EQ(app.launcher().model().item_count(), 1u);
+
+    // 3. Open launcher and verify shell integration
+    ASSERT_TRUE(app.launcher().open().is_ok());
+    EXPECT_TRUE(app.launcher().is_open());
+    EXPECT_TRUE(app.shell().overlay().is_active());
+
+    // Search query matching
+    EXPECT_TRUE(app.launcher().handle_key('t'));
+    EXPECT_TRUE(app.launcher().handle_key('e'));
+    EXPECT_TRUE(app.launcher().handle_key('s'));
+    EXPECT_TRUE(app.launcher().handle_key('t'));
+    EXPECT_EQ(app.launcher().model().item_count(), 1u);
+    EXPECT_EQ(app.launcher().model().item_at(0)->name(), "Test Client App");
+
+    // Clear search
+    EXPECT_TRUE(app.launcher().handle_key(0xff1b)); // Esc
+    EXPECT_TRUE(app.launcher().model().filter().search_query.empty());
+
+    // 4. Verify ZERO synthetic windows exist before application connects
+    EXPECT_EQ(app.window_registry().count(), 0u);
+
+    // 5. Connect real Wayland application client
+    struct LauncherClientContext {
+        wl_display* display = nullptr;
+        wl_registry* registry = nullptr;
+        ExtClientData ext_data;
+        wl_surface* surface = nullptr;
+        xdg_surface* xdg_surf = nullptr;
+        xdg_toplevel* toplevel = nullptr;
+        std::atomic<bool> ready = false;
+        std::atomic<bool> closed = false;
+    };
+
+    const xdg_surface_listener xdg_surf_listener = {
+        .configure = [](void*, xdg_surface* surf, uint32_t serial) {
+            xdg_surface_ack_configure(surf, serial);
+        }
+    };
+
+    const xdg_toplevel_listener xdg_top_listener = {
+        .configure = [](void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {},
+        .close = [](void* data, xdg_toplevel*) {
+            auto* ctx = static_cast<LauncherClientContext*>(data);
+            ctx->closed = true;
+        },
+        .configure_bounds = nullptr,
+        .wm_capabilities = nullptr,
+    };
+
+    LauncherClientContext client_ctx;
+    std::atomic<bool> finish_client = false;
+
+    std::thread client_thread([&]() {
+        client_ctx.display = wl_display_connect(app_sock.c_str());
+        if (!client_ctx.display) return;
+        client_ctx.registry = wl_display_get_registry(client_ctx.display);
+        wl_registry_add_listener(client_ctx.registry, &ext_reg_listener, &client_ctx.ext_data);
+        wl_display_roundtrip(client_ctx.display);
+        wl_display_roundtrip(client_ctx.display);
+
+        if (!client_ctx.ext_data.compositor || !client_ctx.ext_data.wm_base) return;
+
+        client_ctx.surface = wl_compositor_create_surface(client_ctx.ext_data.compositor);
+        client_ctx.xdg_surf = xdg_wm_base_get_xdg_surface(client_ctx.ext_data.wm_base, client_ctx.surface);
+        xdg_surface_add_listener(client_ctx.xdg_surf, &xdg_surf_listener, &client_ctx);
+
+        client_ctx.toplevel = xdg_surface_get_toplevel(client_ctx.xdg_surf);
+        xdg_toplevel_add_listener(client_ctx.toplevel, &xdg_top_listener, &client_ctx);
+        xdg_toplevel_set_title(client_ctx.toplevel, "Real Launched App");
+        xdg_toplevel_set_app_id(client_ctx.toplevel, "org.ldde.LaunchedApp");
+        wl_surface_commit(client_ctx.surface);
+        wl_display_roundtrip(client_ctx.display);
+
+        client_ctx.ready = true;
+
+        while (!finish_client && !client_ctx.closed) {
+            struct pollfd pfd = { wl_display_get_fd(client_ctx.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(client_ctx.display);
+            }
+        }
+
+        xdg_toplevel_destroy(client_ctx.toplevel);
+        xdg_surface_destroy(client_ctx.xdg_surf);
+        wl_surface_destroy(client_ctx.surface);
+        xdg_wm_base_destroy(client_ctx.ext_data.wm_base);
+        wl_compositor_destroy(client_ctx.ext_data.compositor);
+        wl_registry_destroy(client_ctx.registry);
+        wl_display_flush(client_ctx.display);
+        wl_display_disconnect(client_ctx.display);
+    });
+
+    // Wait for client to connect and create window
+    auto start_t = std::chrono::steady_clock::now();
+    while (!client_ctx.ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    ASSERT_TRUE(client_ctx.ready);
+
+    // 6. Launch handoff closes launcher cleanly
+    app.launcher().close();
+    EXPECT_FALSE(app.launcher().is_open());
+    EXPECT_FALSE(app.shell().overlay().is_active());
+
+    // 7. Verify genuine Wayland window was discovered by WindowRegistry/WindowManager
+    EXPECT_EQ(app.window_registry().count(), 1u);
+    auto matching_windows = app.window_registry().windows_for_app("org.ldde.LaunchedApp");
+    ASSERT_FALSE(matching_windows.empty());
+    auto win = matching_windows.front();
+    ASSERT_NE(win, nullptr);
+    EXPECT_EQ(win->title(), "Real Launched App");
+    EXPECT_EQ(app.window_manager().active_window_id(), win->id());
+
+    // 8. Test launch failure recovery
+    ASSERT_TRUE(app.launcher().open().is_ok());
+    EXPECT_TRUE(app.launcher().is_open());
+
+    // Attempt launch of missing executable
+    LaunchRequest bad_req;
+    bad_req.executable = "nonexistent_executable_12345";
+    bad_req.name = "Missing";
+    auto fail_res = app.launcher().controller().state_machine().request_launch();
+    EXPECT_TRUE(fail_res.is_ok());
+    app.launcher().controller().state_machine().fail_launch();
+    EXPECT_EQ(app.launcher().state(), LauncherState::LaunchFailed);
+    EXPECT_TRUE(app.launcher().is_open()); // Stays open and usable!
+
+    // Dismiss failure and close cleanly
+    EXPECT_TRUE(app.launcher().close().is_ok());
+    EXPECT_FALSE(app.launcher().is_open());
+
+    // Clean up
+    finish_client = true;
+    client_thread.join();
+    app.request_shutdown(0);
+}
+
 
 

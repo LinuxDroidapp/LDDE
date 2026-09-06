@@ -214,6 +214,10 @@ Status Application::initialize_components() {
         if (!seat || !seat->touch() || !touch_interaction_manager_) return;
         auto* tch = seat->touch();
         tch->on_down([this](const input::TouchDownEvent& ev) {
+            if (launcher_.is_open()) {
+                launcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                return;
+            }
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_down(
                     ev.id,
@@ -222,6 +226,10 @@ Status Application::initialize_components() {
             }
         });
         tch->on_motion([this](const input::TouchMotionEvent& ev) {
+            if (launcher_.is_open()) {
+                launcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                return;
+            }
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_motion(
                     ev.id,
@@ -230,11 +238,19 @@ Status Application::initialize_components() {
             }
         });
         tch->on_up([this](const input::TouchUpEvent& ev) {
+            if (launcher_.is_open()) {
+                launcher_.handle_touch_up(0, 0);
+                return;
+            }
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_up(ev.id, ev.time_ms);
             }
         });
         tch->on_cancel([this]() {
+            if (launcher_.is_open()) {
+                launcher_.handle_touch_cancel();
+                return;
+            }
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->cancel_active_interaction();
             }
@@ -266,6 +282,7 @@ Status Application::initialize_components() {
         auto* policy = display_manager_.find_policy_by_id(disp.id);
         if (policy) {
             window_manager_.handle_display_change(*policy);
+            launcher_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -280,8 +297,11 @@ Status Application::initialize_components() {
         if (primary) {
             shell_.update_display(*primary);
             auto* policy = display_manager_.find_policy_by_id(primary->id);
-            if (policy && touch_interaction_manager_) {
-                touch_interaction_manager_->handle_display_change(*policy);
+            if (policy) {
+                launcher_.update_display_policy(*policy);
+                if (touch_interaction_manager_) {
+                    touch_interaction_manager_->handle_display_change(*policy);
+                }
             }
         }
     });
@@ -298,6 +318,39 @@ Status Application::initialize_components() {
             application_discovery_, &event_loop_);
         application_change_monitor_->start();
     }
+
+    // Initialize D7 Application Launcher
+    display::DisplayPolicy default_policy;
+    auto primary = display_manager_.primary_display();
+    if (primary) {
+        auto* pol = display_manager_.find_policy_by_id(primary->id);
+        if (pol) {
+            default_policy = *pol;
+        } else {
+            default_policy = display::DisplayPolicy(*primary);
+        }
+    }
+    s = launcher_.initialize(application_catalog_, default_policy, config_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Launcher, "Failed to initialize launcher: " << s.to_string());
+    }
+
+    // Connect launcher with shell overlay rendering
+    shell_.overlay().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme) {
+        launcher_.render(buf, theme, shell_.tokens());
+    });
+
+    launcher_.controller().state_machine().on_state_changed([this](launcher::LauncherState /*old_state*/, launcher::LauncherState new_state) {
+        bool active = (new_state != launcher::LauncherState::Closed);
+        shell_.overlay().set_active(active);
+        shell_.render_all();
+    });
+
+    launcher_.controller().on_request_render([this]() {
+        if (launcher_.is_open()) {
+            shell_.render_all();
+        }
+    });
 
     return Status::ok();
 }
@@ -520,6 +573,8 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    launcher_.shutdown();
+
     if (application_change_monitor_) {
         application_change_monitor_->stop();
         application_change_monitor_.reset();

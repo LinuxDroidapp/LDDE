@@ -80,6 +80,15 @@ enum class ErrorCode {
     FilesystemError,
     UnsupportedDesktopEntry,
     ApplicationNotFound,
+    // Launcher
+    LauncherNotOpen,
+    LauncherAlreadyOpen,
+    LauncherInvalidState,
+    LaunchFailed,
+    LaunchBackendUnavailable,
+    LaunchExecutableNotFound,
+    LaunchPermissionDenied,
+    IconNotFound,
     // Internal
     InvalidArgument,
     NotImplemented,

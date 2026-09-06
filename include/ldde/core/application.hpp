@@ -21,6 +21,7 @@
 #include "ldde/application/application_catalog.hpp"
 #include "ldde/application/application_discovery.hpp"
 #include "ldde/application/application_change_monitor.hpp"
+#include "ldde/launcher/launcher.hpp"
 
 namespace ldde::core {
 
@@ -61,6 +62,8 @@ public:
     [[nodiscard]] application::ApplicationCatalog& application_catalog() noexcept { return application_catalog_; }
     [[nodiscard]] application::ApplicationDiscovery& application_discovery() noexcept { return application_discovery_; }
     [[nodiscard]] application::ApplicationChangeMonitor* application_change_monitor() noexcept { return application_change_monitor_.get(); }
+    [[nodiscard]] launcher::Launcher& launcher() noexcept { return launcher_; }
+    [[nodiscard]] const launcher::Launcher& launcher() const noexcept { return launcher_; }
 
     [[nodiscard]] static std::optional<CommandLineOptions> parse_args(int argc, char* argv[]);
     static void print_help(std::string_view program_name);
@@ -83,6 +86,7 @@ private:
     application::ApplicationCatalog application_catalog_;
     application::ApplicationDiscovery application_discovery_;
     std::unique_ptr<application::ApplicationChangeMonitor> application_change_monitor_;
+    launcher::Launcher launcher_;
 
     CommandLineOptions cli_options_;
     int exit_code_ = 0;

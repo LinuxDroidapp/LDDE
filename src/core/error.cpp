@@ -67,6 +67,14 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::FilesystemError:              return "FilesystemError";
         case ErrorCode::UnsupportedDesktopEntry:      return "UnsupportedDesktopEntry";
         case ErrorCode::ApplicationNotFound:          return "ApplicationNotFound";
+        case ErrorCode::LauncherNotOpen:              return "LauncherNotOpen";
+        case ErrorCode::LauncherAlreadyOpen:          return "LauncherAlreadyOpen";
+        case ErrorCode::LauncherInvalidState:         return "LauncherInvalidState";
+        case ErrorCode::LaunchFailed:                 return "LaunchFailed";
+        case ErrorCode::LaunchBackendUnavailable:     return "LaunchBackendUnavailable";
+        case ErrorCode::LaunchExecutableNotFound:     return "LaunchExecutableNotFound";
+        case ErrorCode::LaunchPermissionDenied:       return "LaunchPermissionDenied";
+        case ErrorCode::IconNotFound:                 return "IconNotFound";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";

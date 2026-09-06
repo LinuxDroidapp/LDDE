@@ -92,6 +92,17 @@ set(LDDE_CORE_SOURCES
     src/application/application_catalog.cpp
     src/application/application_discovery.cpp
     src/application/application_change_monitor.cpp
+    src/launcher/launcher_state.cpp
+    src/launcher/application_launcher.cpp
+    src/launcher/launcher_icon_resolver.cpp
+    src/launcher/launcher_category.cpp
+    src/launcher/launcher_item.cpp
+    src/launcher/launcher_search.cpp
+    src/launcher/launcher_layout.cpp
+    src/launcher/launcher_model.cpp
+    src/launcher/launcher_view.cpp
+    src/launcher/launcher_controller.cpp
+    src/launcher/launcher.cpp
     src/core/application.cpp
 )
 

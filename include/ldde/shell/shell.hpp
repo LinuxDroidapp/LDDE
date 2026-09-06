@@ -58,6 +58,8 @@ public:
     [[nodiscard]] const DockRegion& dock_region() const noexcept { return dock_region_; }
     [[nodiscard]] ShellOverlay& overlay() noexcept { return overlay_; }
     [[nodiscard]] const ShellOverlay& overlay() const noexcept { return overlay_; }
+    [[nodiscard]] const ShellTheme& theme() const noexcept { return theme_; }
+    [[nodiscard]] const DesignTokens& tokens() const noexcept { return tokens_; }
 
 private:
     ShellLifecycleState state_ = ShellLifecycleState::Created;

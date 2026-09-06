@@ -63,6 +63,11 @@ void Config::load_defaults() {
     set("application", "watch_filesystem", "true");
     set("application", "system_paths", "/usr/local/share/applications:/usr/share/applications");
     set("application", "user_path", "~/.local/share/applications");
+    set("launcher", "default_view", "grid");
+    set("launcher", "grid_min_item_width", "80");
+    set("launcher", "show_categories", "true");
+    set("launcher", "search_enabled", "true");
+    set("launcher", "terminal_emulator", "x-terminal-emulator");
 
     loaded_sources_.emplace_back("<defaults>");
 }

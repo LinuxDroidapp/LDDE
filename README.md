@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, and **D2 — Real Window Tracking**. D2 establishes the authoritative model of real Linux application windows running through Wayland with zero synthetic surfaces, deterministic lifecycle tracking, centralized window registry, typed window events, Weston `xdg_wm_base` discovery, and an application tracking server endpoint.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, and **D7 — Application Launcher**.
 
 ---
 
@@ -24,9 +24,13 @@ LinuxDroid Runtime
         ↓
       Weston (Compositor)
         ↓
-    LDDE (Desktop Shell + Window Tracking)
+    LDDE
     ├── Desktop Shell Subsystem (Desktop background, status bar, dock, overlay)
-    └── Window Tracking Subsystem (WindowRegistry, WindowTracker, Wayland endpoint)
+    ├── Window Tracking & Management (WindowRegistry, WindowTracker, WindowManager)
+    ├── Mobile Display Policy (DisplayManager, DisplayPolicy, safe areas)
+    ├── Touch Window Interaction (TouchInteractionManager, gestures, controls)
+    ├── Application Discovery (Catalog, XDG desktop entry scanner, inotify monitor)
+    └── Application Launcher (Deterministic state machine, search, grid, launch handoff)
         ↓
   Linux Applications (Wayland Clients)
 ```
@@ -34,40 +38,37 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, and window tracking / management policy.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, and launcher.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 + D1 + D2
+## Subsystems in D0 – D7
 
-1. **Real Window Tracking Subsystem (D2)**:
-   - **Authoritative Window Model**: Real Wayland surface tracking (`wl_surface`, `xdg_surface`, `xdg_toplevel`), stable `WindowId`, metadata (`title`, `app_id`), geometry (`Rect`), surface dimensions (`Size`), state (`Normal`, `Maximized`, `Fullscreen`, `Minimized`), focus/activation (`is_active`), visibility (`is_visible`), and transient hierarchy (`parent_id`).
-   - **Deterministic Lifecycle State Machine**: Strictly validated transitions (`Discovered` → `Initializing` → `Ready` → `Visible` → `Closing` → `Destroyed`).
-   - **Centralized Window Registry**: Thread-safe `WindowRegistry` tracking live windows in creation order, app-based filtering, active window management with automatic focus handover upon window destruction.
-   - **Typed Window Event Subsystem**: Synchronous event dispatching (`Created`, `TitleChanged`, `AppIdChanged`, `GeometryChanged`, `StateChanged`, `FocusChanged`, `VisibilityChanged`, `ParentChanged`, `Closed`, `Destroyed`) to registered listeners.
-   - **Compositor Client Binding**: Binds Weston's `xdg_wm_base` (up to v5) to discover capabilities, ping/pong, and track client-side surfaces.
-   - **Application Tracking Server Endpoint**: Hosts a dedicated Wayland tracking socket (`wayland-ldde-apps`) exposing `wl_compositor` and `xdg_wm_base` so external Linux Wayland applications are tracked authoritatively in real time.
-2. **Wayland Shell Subsystem (D1)**:
-   - **Root Desktop Surface**: Fullscreen background with Cairo vector gradients and subtle wallpaper ambient glow.
-   - **Top / Status Region**: Subsurface positioned in top safe area with typography clock and system status indicator badge.
-   - **Bottom / Dock Region**: Centered floating rounded pill with responsive width ratio (90% in portrait, 60% in landscape) and slot indicators.
-   - **Shell Overlay Foundation**: Fullscreen scrim and modal card subsurface with hit interception.
-   - **Subsurface Composition**: Uses `wl_subcompositor` desync mode for independent, zero-flicker rendering.
-   - **Shm Buffer Pool**: Double-buffered POSIX shared memory (`memfd_create` with `MFD_CLOEXEC` fallback to `shm_open`).
-   - **Design Tokens & Theme**: DP-to-pixel scaling (160 DPI baseline) with `#RRGGBB` / `#RRGGBBAA` hex color parser and theme presets.
-   - **Responsive Shell Layout**: Centralized layout calculation with display cutout/gesture safe insets and geometric hit testing.
-3. **Core Runtime & Lifecycle (D0)**: Formal state tracking (`STARTING`, `INITIALIZING`, `CONNECTING_WAYLAND`, `INITIALIZING_COMPONENTS`, `READY`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED`).
-4. **Centralized Logger (D0)**: Multi-category, thread-safe logger with severity levels (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`).
-5. **Structured Error Model (D0)**: Categorized diagnostics with `Status` and `Result<T>` monadic error handling.
-6. **Linux Event Loop (D0)**: Linux `epoll(7)` event loop with timerfd, signalfd, and eventfd support.
-7. **Wayland Client Layer (D0)**: RAII wrappers around `wl_display`, `wl_registry`, `wl_output`, `wl_seat`, and event dispatching.
-8. **Display Foundation (D0)**: Display geometry model (`DisplayInfo`), mode tracking, transforms, UI scaling, and safe insets.
-9. **Input Foundation (D0)**: Wayland seat capability monitoring (`Pointer`, `Keyboard`, `Touch`).
-10. **Configuration System (D0)**: INI parser with cascading precedence (Defaults → `/etc/linuxdroid/desktop.conf` → `~/.config/linuxdroid/desktop.conf` → CLI overrides) and schema versioning (`config_version = 1`).
-11. **LDDM Readiness Contract (D0/D1)**: Dual-channel readiness reporting via `NOTIFY_SOCKET` (`sd_notify("READY=1")`) and `--ready-fd <fd>`, signaled only when shell reaches `READY`.
+1. **Application Launcher Subsystem (D7)**:
+   - **Deterministic State Machine**: `Closed` ↔ `Opening` ↔ `Open` ↔ `Searching` ↔ `Launching` (with `LaunchFailed` banner) ↔ `Closing`.
+   - **Responsive Grid Layout**: Dynamically computes grid columns based on D4 `DisplayPolicy` metrics, margins, and minimum item width ($\ge 48\,\text{dp}$ touch targets).
+   - **Freedesktop Icon Resolution**: Thread-safe resolution and LRU caching across standard XDG icon directories and sizes, with fallback Cairo vector badges.
+   - **In-Memory Search & Multi-Tier Scoring**: Exact Name (1000) → Prefix (800) → Word Prefix (600) → Substring (400) → GenericName (300) → Keywords (200) → Comment (100), with stable tie-breaking by localized Name then `ApplicationId`.
+   - **Category Navigation & Filtering**: Canonical categories (`AudioVideo`, `Development`, `Education`, `Game`, `Graphics`, `Network`, `Office`, `Settings`, `System`, `Utility`, `Other`) with dynamic item counts.
+   - **Input Controller**: Arrow navigation, Enter to launch, Esc to clear search/close, Tab category cycling, touch tap, drag-to-scroll with boundary clamping.
+   - **Structured Launch Handoff**: Clean `fork()` + `pipe2(O_CLOEXEC)` + `execvp()` launch execution without shell strings (`/bin/sh -c` is prohibited) and zero synthetic window creation.
+2. **Application Discovery Subsystem (D6)**:
+   - **Authoritative Catalog**: Scans `$XDG_DATA_HOME/applications` and `$XDG_DATA_DIRS/applications`, parses `.desktop` files, enforces user override rules, and monitors live filesystem updates with inotify.
+3. **Touch Window Interaction Subsystem (D5)**:
+   - **Touch-First Window Manipulation**: Touch-safe dragging, multi-edge resizing, window controls (close, minimize, maximize), and multi-touch contact ownership.
+4. **Mobile Display Policy Subsystem (D4)**:
+   - **Responsive Display Model**: Dynamic form factor detection (phone portrait/landscape, tablet, desktop), logical scale normalization, cutout/safe-area handling, and display geometry change propagation.
+5. **Window Management Subsystem (D3)**:
+   - **State & Geometry Control**: Focus arbitration, Z-order stacking, maximize, fullscreen, minimize, and restore policies.
+6. **Real Window Tracking Subsystem (D2)**:
+   - **Authoritative Window Model**: Real Wayland surface tracking (`wl_surface`, `xdg_surface`, `xdg_toplevel`), stable `WindowId`, metadata, lifecycle states, and dedicated application tracking endpoint (`wayland-ldde-apps`).
+7. **Wayland Shell Subsystem (D1)**:
+   - **Root Surface & Subsurfaces**: Desktop background, status region, dock region, shell overlay foundation with double-buffered POSIX shared memory and Cairo vector rendering.
+8. **Core Foundation (D0)**:
+   - **Lifecycle & Event Loop**: State tracking, thread-safe logger, monadic `Status`/`Result<T>`, Linux `epoll(7)` event loop, Wayland client connection, INI configuration system, and LDDM dual-channel readiness reporting (`sd_notify` / `--ready-fd`).
 
 ---
 
