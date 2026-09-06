@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <cstdlib>
+#include <fstream>
 
 using namespace ldde::core;
 
@@ -54,17 +55,43 @@ TEST(ReadinessTest, NotifySocketSignaling) {
     unlink(sock_path.c_str());
 }
 
+TEST(ReadinessTest, ReadinessFileSignaling) {
+    std::string file_path = "/tmp/ldde_test_readiness.ready";
+    unlink(file_path.c_str());
+
+    ReadinessManager rm;
+    rm.set_readiness_file(file_path);
+
+    EXPECT_FALSE(rm.is_ready_reported());
+    Status s = rm.report_ready();
+    EXPECT_TRUE(s.is_ok());
+    EXPECT_TRUE(rm.is_ready_reported());
+
+    std::ifstream ifs(file_path);
+    ASSERT_TRUE(ifs.is_open());
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_NE(content.find("STATUS=READY\n"), std::string::npos);
+    EXPECT_NE(content.find("VERSION=1\n"), std::string::npos);
+    EXPECT_NE(content.find("PID="), std::string::npos);
+
+    unlink(file_path.c_str());
+}
+
 TEST(ReadinessTest, EnvironmentDetection) {
     setenv("LDDE_READY_FD", "17", 1);
     setenv("NOTIFY_SOCKET", "/tmp/mock_notify.sock", 1);
+    setenv("LDDE_READINESS_FILE", "/tmp/mock_ready.file", 1);
 
     ReadinessManager rm;
     rm.detect_environment();
 
     EXPECT_EQ(rm.ready_fd(), 17);
     EXPECT_EQ(rm.notify_socket(), "/tmp/mock_notify.sock");
+    EXPECT_EQ(rm.readiness_file(), "/tmp/mock_ready.file");
 
     unsetenv("LDDE_READY_FD");
     unsetenv("NOTIFY_SOCKET");
+    unsetenv("LDDE_READINESS_FILE");
 }
 

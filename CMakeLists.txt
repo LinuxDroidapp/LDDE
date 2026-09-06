@@ -230,6 +230,13 @@ install(TARGETS ldde
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Compatibility symlink: ldde-session -> ldde
+install(CODE "
+    file(CREATE_LINK ldde
+         \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ldde-session\"
+         SYMBOLIC)
+")
+
 # Static library (for SDK consumers)
 install(TARGETS ldde_core
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde

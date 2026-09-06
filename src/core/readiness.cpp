@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cerrno>
+#include <fstream>
 
 namespace ldde::core {
 
@@ -25,6 +26,10 @@ void ReadinessManager::set_ready_fd(int fd) noexcept {
 
 void ReadinessManager::set_notify_socket(std::string socket_path) noexcept {
     notify_socket_ = std::move(socket_path);
+}
+
+void ReadinessManager::set_readiness_file(std::string file_path) noexcept {
+    readiness_file_ = std::move(file_path);
 }
 
 void ReadinessManager::detect_environment() {
@@ -48,6 +53,14 @@ void ReadinessManager::detect_environment() {
         if (notify_env && *notify_env) {
             notify_socket_ = notify_env;
             LDDE_LOG_DEBUG(Core, "Detected NOTIFY_SOCKET from environment: " << notify_socket_);
+        }
+    }
+
+    if (readiness_file_.empty()) {
+        const char* ready_file_env = std::getenv("LDDE_READINESS_FILE");
+        if (ready_file_env && *ready_file_env) {
+            readiness_file_ = ready_file_env;
+            LDDE_LOG_DEBUG(Core, "Detected LDDE_READINESS_FILE from environment: " << readiness_file_);
         }
     }
 }
@@ -79,9 +92,19 @@ Status ReadinessManager::report_ready() {
         }
     }
 
+    if (!readiness_file_.empty()) {
+        Status s = notify_file_ready();
+        if (s.is_error()) {
+            LDDE_LOG_WARN(Core, "Failed to signal readiness via readiness file: " << s.to_string());
+        } else {
+            signaled = true;
+            LDDE_LOG_INFO(Core, "Signaled readiness via readiness file (" << readiness_file_ << ")");
+        }
+    }
+
     ready_reported_ = true;
 
-    if (!signaled && notify_socket_.empty() && !ready_fd_.has_value()) {
+    if (!signaled && notify_socket_.empty() && !ready_fd_.has_value() && readiness_file_.empty()) {
         LDDE_LOG_DEBUG(Core, "No external readiness receiver configured; ready state established internally.");
     }
 
@@ -133,6 +156,30 @@ Status ReadinessManager::notify_fd_ready() {
     if (written < 0) {
         return LDDE_STATUS_ERROR(ErrorCategory::Session, ErrorCode::ReadinessNotificationFailed,
                                  std::string("write to ready fd failed: ") + std::strerror(errno));
+    }
+
+    return Status::ok();
+}
+
+Status ReadinessManager::notify_file_ready() {
+    if (readiness_file_.empty()) {
+        return Status::ok();
+    }
+
+    std::ofstream ofs(readiness_file_, std::ios::trunc);
+    if (!ofs.is_open()) {
+        return LDDE_STATUS_ERROR(ErrorCategory::Session, ErrorCode::ReadinessNotificationFailed,
+                                 "Failed to open readiness file: " + readiness_file_);
+    }
+
+    ofs << "STATUS=READY\n"
+        << "VERSION=1\n"
+        << "PID=" << getpid() << "\n";
+    ofs.flush();
+
+    if (!ofs.good()) {
+        return LDDE_STATUS_ERROR(ErrorCategory::Session, ErrorCode::ReadinessNotificationFailed,
+                                 "Failed to write to readiness file: " + readiness_file_);
     }
 
     return Status::ok();
