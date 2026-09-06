@@ -203,7 +203,11 @@ if command -v cpack &>/dev/null && command -v dpkg-deb &>/dev/null; then
                 || fail "dpkg-deb: Version wrong"
 
             # Check contents include ldde binary
-            dpkg-deb --contents "${DEB_OUT}" 2>/dev/null | grep -q 'usr/bin/ldde' \
+            # Use temp file: dpkg-deb exits with code 2 even on success when piped,
+            # which trips set -euo pipefail and makes the grep appear to fail.
+            CONTENTS_TMP="${BUILD_DIR}/deb_contents.txt"
+            dpkg-deb --contents "${DEB_OUT}" > "${CONTENTS_TMP}" 2>/dev/null || true
+            grep -q 'usr/bin/ldde' "${CONTENTS_TMP}" \
                 && pass "dpkg-deb: /usr/bin/ldde present in package" \
                 || fail "dpkg-deb: /usr/bin/ldde missing from package"
 
