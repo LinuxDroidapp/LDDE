@@ -17,6 +17,7 @@ enum class ErrorCategory {
     Application,
     Window,
     Dock,
+    Switcher,
     Session,
     Resource,
     Internal
@@ -95,6 +96,14 @@ enum class ErrorCode {
     DockItemNotFound,
     DockInvalidState,
     DockActivationFailed,
+    // Switcher
+    SwitcherNotOpen,
+    SwitcherAlreadyOpen,
+    SwitcherInvalidState,
+    SwitcherNoWindows,
+    SwitcherWindowNotFound,
+    SwitcherActivationFailed,
+    SwitcherRestoreFailed,
     // Internal
     InvalidArgument,
     NotImplemented,

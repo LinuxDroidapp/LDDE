@@ -110,6 +110,14 @@ set(LDDE_CORE_SOURCES
     src/dock/dock_view.cpp
     src/dock/dock_controller.cpp
     src/dock/dock.cpp
+    src/switcher/switcher_state.cpp
+    src/switcher/switcher_item.cpp
+    src/switcher/switcher_mru.cpp
+    src/switcher/switcher_model.cpp
+    src/switcher/switcher_layout.cpp
+    src/switcher/switcher_view.cpp
+    src/switcher/switcher_controller.cpp
+    src/switcher/switcher.cpp
     src/core/application.cpp
 )
 

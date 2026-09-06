@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, and **D8 — Dock**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, and **D9 — Application Switcher**.
 
 ---
 
@@ -26,6 +26,7 @@ LinuxDroid Runtime
         ↓
     LDDE
     ├── Desktop Shell Subsystem (Desktop background, status bar, dock, overlay)
+    ├── Application Switcher (MRU tracking, multi-window grouping, Cairo overlay, fast touch/key switching)
     ├── Dock Subsystem (Pinned apps, authoritative running state, multi-window grouping, launcher toggle)
     ├── Application Launcher (Deterministic state machine, search, grid, launch handoff)
     ├── Application Discovery (Catalog, XDG desktop entry scanner, inotify monitor)
@@ -39,16 +40,24 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, and dock.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, and switcher.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D8
+## Subsystems in D0 – D9
 
-1. **Dock Subsystem (D8)**:
+1. **Application Switcher Subsystem (D9)**:
+   - **Authoritative Window & App State**: Consumes running state directly from D2 `WindowRegistry` and D3 `WindowManager` (strictly zero process polling, `/proc` scraping, or shell calls).
+   - **Deterministic MRU Ordering**: Focus-driven in-memory MRU tracking; automatically pre-selects the most recently used previous application for rapid Alt+Tab switching.
+   - **Multi-Window Grouping & Transients**: Groups multiple windows by application ID with count badges; associates transient dialogs under parent applications.
+   - **Double-Buffered Cairo Rendering**: Translucent backdrop scrim, rounded cards, active/current/selected visual highlights, and vector badge fallbacks.
+   - **Touch, Pointer & Keyboard Navigation**: Card tap activation, swipe scroll, Tab / Shift+Tab cycling, Arrow keys, Enter commit, and Esc cancel.
+   - **Handoff Activation**: Automatically restores minimized windows before calling `WindowManager::activate()`.
+   - **Dynamic Window Destruction Resilience**: Cleanly reacts to windows closed or destroyed in the background without stale pointers or crashes.
+2. **Dock Subsystem (D8)**:
    - **Authoritative Running State**: Live synchronization with D2 `WindowRegistry` and D3 `WindowManager` (strictly zero process polling, `/proc` scraping, or shell calls).
    - **Application vs. Window Separation**: Groups multiple windows under their owning application with window count indicators.
    - **Pinned & Unpinned Management**: Configurable pinned applications via `dock.pinned`, dynamic pinning/unpinning, graceful missing desktop entry handling, and automatic dock presentation/removal of unpinned running apps.

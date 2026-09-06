@@ -11,6 +11,7 @@ std::string_view error_category_name(ErrorCategory category) noexcept {
         case ErrorCategory::Application:   return "Application";
         case ErrorCategory::Window:        return "Window";
         case ErrorCategory::Dock:          return "Dock";
+        case ErrorCategory::Switcher:      return "Switcher";
         case ErrorCategory::Session:       return "Session";
         case ErrorCategory::Resource:      return "Resource";
         case ErrorCategory::Internal:      return "Internal";
@@ -80,6 +81,13 @@ std::string_view error_code_name(ErrorCode code) noexcept {
         case ErrorCode::DockItemNotFound:             return "DockItemNotFound";
         case ErrorCode::DockInvalidState:             return "DockInvalidState";
         case ErrorCode::DockActivationFailed:         return "DockActivationFailed";
+        case ErrorCode::SwitcherNotOpen:              return "SwitcherNotOpen";
+        case ErrorCode::SwitcherAlreadyOpen:          return "SwitcherAlreadyOpen";
+        case ErrorCode::SwitcherInvalidState:         return "SwitcherInvalidState";
+        case ErrorCode::SwitcherNoWindows:            return "SwitcherNoWindows";
+        case ErrorCode::SwitcherWindowNotFound:       return "SwitcherWindowNotFound";
+        case ErrorCode::SwitcherActivationFailed:     return "SwitcherActivationFailed";
+        case ErrorCode::SwitcherRestoreFailed:        return "SwitcherRestoreFailed";
         case ErrorCode::InvalidArgument:              return "InvalidArgument";
         case ErrorCode::NotImplemented:               return "NotImplemented";
         case ErrorCode::Unknown:                      return "Unknown";

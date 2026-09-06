@@ -214,6 +214,10 @@ Status Application::initialize_components() {
         if (!seat || !seat->touch() || !touch_interaction_manager_) return;
         auto* tch = seat->touch();
         tch->on_down([this](const input::TouchDownEvent& ev) {
+            if (switcher_.is_open()) {
+                switcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                return;
+            }
             if (launcher_.is_open()) {
                 launcher_.handle_touch_down(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
@@ -233,6 +237,10 @@ Status Application::initialize_components() {
             }
         });
         tch->on_motion([this](const input::TouchMotionEvent& ev) {
+            if (switcher_.is_open()) {
+                switcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
+                return;
+            }
             if (launcher_.is_open()) {
                 launcher_.handle_touch_motion(static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y));
                 return;
@@ -252,6 +260,10 @@ Status Application::initialize_components() {
             }
         });
         tch->on_up([this](const input::TouchUpEvent& ev) {
+            if (switcher_.is_open()) {
+                switcher_.handle_touch_up(0, 0);
+                return;
+            }
             if (launcher_.is_open()) {
                 launcher_.handle_touch_up(0, 0);
                 return;
@@ -262,6 +274,10 @@ Status Application::initialize_components() {
             }
         });
         tch->on_cancel([this]() {
+            if (switcher_.is_open()) {
+                switcher_.handle_touch_cancel();
+                return;
+            }
             if (launcher_.is_open()) {
                 launcher_.handle_touch_cancel();
                 return;
@@ -300,6 +316,7 @@ Status Application::initialize_components() {
             window_manager_.handle_display_change(*policy);
             launcher_.update_display_policy(*policy);
             dock_.update_display_policy(*policy);
+            switcher_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -317,6 +334,7 @@ Status Application::initialize_components() {
             if (policy) {
                 launcher_.update_display_policy(*policy);
                 dock_.update_display_policy(*policy);
+                switcher_.update_display_policy(*policy);
                 if (touch_interaction_manager_) {
                     touch_interaction_manager_->handle_display_change(*policy);
                 }
@@ -353,23 +371,6 @@ Status Application::initialize_components() {
         LDDE_LOG_WARN(Launcher, "Failed to initialize launcher: " << s.to_string());
     }
 
-    // Connect launcher with shell overlay rendering
-    shell_.overlay().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme) {
-        launcher_.render(buf, theme, shell_.tokens());
-    });
-
-    launcher_.controller().state_machine().on_state_changed([this](launcher::LauncherState /*old_state*/, launcher::LauncherState new_state) {
-        bool active = (new_state != launcher::LauncherState::Closed);
-        shell_.overlay().set_active(active);
-        shell_.render_all();
-    });
-
-    launcher_.controller().on_request_render([this]() {
-        if (launcher_.is_open()) {
-            shell_.render_all();
-        }
-    });
-
     // Initialize D8 Dock
     s = dock_.initialize(application_catalog_, window_registry_, window_manager_, launcher_, default_policy, config_);
     if (s.is_error()) {
@@ -383,6 +384,48 @@ Status Application::initialize_components() {
 
     dock_.controller().on_request_render([this]() {
         shell_.render_all();
+    });
+
+    // Initialize D9 Application Switcher
+    s = switcher_.initialize(application_catalog_, window_registry_, window_manager_, default_policy, config_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Switcher, "Failed to initialize switcher: " << s.to_string());
+    }
+
+    // Connect overlay rendering: switcher takes precedence over launcher
+    shell_.overlay().set_render_callback([this](shell::ShmBuffer& buf, const shell::ShellTheme& theme) {
+        if (switcher_.is_open()) {
+            switcher_.render(buf, theme, shell_.tokens());
+        } else if (launcher_.is_open()) {
+            launcher_.render(buf, theme, shell_.tokens());
+        }
+    });
+
+    launcher_.controller().state_machine().on_state_changed([this](launcher::LauncherState /*old_state*/, launcher::LauncherState new_state) {
+        bool active = (new_state != launcher::LauncherState::Closed) || switcher_.is_open();
+        shell_.overlay().set_active(active);
+        shell_.render_all();
+    });
+
+    launcher_.controller().on_request_render([this]() {
+        if (launcher_.is_open() && !switcher_.is_open()) {
+            shell_.render_all();
+        }
+    });
+
+    switcher_.controller().state_machine().on_state_changed([this](switcher::SwitcherState /*old_state*/, switcher::SwitcherState new_state) {
+        if (new_state != switcher::SwitcherState::Closed && launcher_.is_open()) {
+            launcher_.close();
+        }
+        bool active = (new_state != switcher::SwitcherState::Closed) || launcher_.is_open();
+        shell_.overlay().set_active(active);
+        shell_.render_all();
+    });
+
+    switcher_.controller().on_request_render([this]() {
+        if (switcher_.is_open()) {
+            shell_.render_all();
+        }
     });
 
     return Status::ok();
@@ -606,6 +649,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    switcher_.shutdown();
     dock_.shutdown();
     launcher_.shutdown();
 

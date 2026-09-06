@@ -1396,6 +1396,142 @@ TEST_F(WestonIntegrationTest, DockWorkflowAndRealWindowDiscovery) {
     app.request_shutdown(0);
 }
 
+TEST_F(WestonIntegrationTest, SwitcherWorkflowAndRealWindowDiscovery) {
+    ASSERT_FALSE(socket_name_.empty());
+
+    core::Application app;
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+
+    ASSERT_TRUE(app.initialize(5, argv).is_ok());
+
+    // Verify Switcher initialized and initially closed
+    EXPECT_FALSE(app.switcher().is_open());
+    EXPECT_EQ(app.switcher().state(), ldde::switcher::SwitcherState::Closed);
+
+    // Prepare client to connect to LDDE Wayland server
+    std::string app_sock = app.window_tracker().application_socket_name();
+    ASSERT_FALSE(app_sock.empty());
+
+    struct SwitcherClientContext {
+        wl_display* display = nullptr;
+        wl_registry* registry = nullptr;
+        ExtClientData ext_data;
+        wl_surface* surface = nullptr;
+        xdg_surface* xdg_surf = nullptr;
+        xdg_toplevel* toplevel = nullptr;
+        std::atomic<bool> ready = false;
+        std::atomic<bool> closed = false;
+    };
+
+    const xdg_surface_listener xdg_surf_listener = {
+        .configure = [](void*, xdg_surface* surf, uint32_t serial) {
+            xdg_surface_ack_configure(surf, serial);
+        }
+    };
+
+    const xdg_toplevel_listener xdg_top_listener = {
+        .configure = [](void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {},
+        .close = [](void* data, xdg_toplevel*) {
+            if (data) static_cast<SwitcherClientContext*>(data)->closed = true;
+        },
+        .configure_bounds = nullptr,
+        .wm_capabilities = nullptr,
+    };
+
+    SwitcherClientContext client_ctx;
+    std::atomic<bool> finish_client = false;
+
+    std::thread client_thread([&]() {
+        client_ctx.display = wl_display_connect(app_sock.c_str());
+        if (!client_ctx.display) return;
+        client_ctx.registry = wl_display_get_registry(client_ctx.display);
+        wl_registry_add_listener(client_ctx.registry, &ext_reg_listener, &client_ctx.ext_data);
+        wl_display_roundtrip(client_ctx.display);
+        wl_display_roundtrip(client_ctx.display);
+
+        if (!client_ctx.ext_data.compositor || !client_ctx.ext_data.wm_base) return;
+
+        client_ctx.surface = wl_compositor_create_surface(client_ctx.ext_data.compositor);
+        client_ctx.xdg_surf = xdg_wm_base_get_xdg_surface(client_ctx.ext_data.wm_base, client_ctx.surface);
+        xdg_surface_add_listener(client_ctx.xdg_surf, &xdg_surf_listener, &client_ctx);
+
+        client_ctx.toplevel = xdg_surface_get_toplevel(client_ctx.xdg_surf);
+        xdg_toplevel_add_listener(client_ctx.toplevel, &xdg_top_listener, &client_ctx);
+        xdg_toplevel_set_title(client_ctx.toplevel, "Real Switcher Client App");
+        xdg_toplevel_set_app_id(client_ctx.toplevel, "org.ldde.SwitcherClient");
+        wl_surface_commit(client_ctx.surface);
+        wl_display_roundtrip(client_ctx.display);
+
+        client_ctx.ready = true;
+
+        while (!finish_client && !client_ctx.closed) {
+            struct pollfd pfd = { wl_display_get_fd(client_ctx.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(client_ctx.display);
+            }
+        }
+
+        xdg_toplevel_destroy(client_ctx.toplevel);
+        xdg_surface_destroy(client_ctx.xdg_surf);
+        wl_surface_destroy(client_ctx.surface);
+        xdg_wm_base_destroy(client_ctx.ext_data.wm_base);
+        wl_compositor_destroy(client_ctx.ext_data.compositor);
+        wl_registry_destroy(client_ctx.registry);
+        wl_display_flush(client_ctx.display);
+        wl_display_disconnect(client_ctx.display);
+    });
+
+    // Wait for client to connect and create window
+    auto start_t = std::chrono::steady_clock::now();
+    while (!client_ctx.ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    ASSERT_TRUE(client_ctx.ready);
+
+    // Verify genuine window registered
+    auto matching = app.window_registry().windows_for_app("org.ldde.SwitcherClient");
+    ASSERT_FALSE(matching.empty());
+    auto win = matching.front();
+    ASSERT_NE(win, nullptr);
+
+    // Open Switcher
+    ASSERT_TRUE(app.switcher().open().is_ok());
+    EXPECT_TRUE(app.switcher().is_open());
+    EXPECT_TRUE(app.shell().overlay().is_active());
+
+    // Switcher presentation contains client window
+    EXPECT_GE(app.switcher().model().item_count(), 1u);
+    const auto* item = app.switcher().model().find_by_window_id(win->id());
+    ASSERT_NE(item, nullptr);
+
+    // Tab navigation and Enter activation
+    EXPECT_TRUE(app.switcher().handle_key(0xff09)); // Tab
+    EXPECT_TRUE(app.switcher().handle_key(0xff0d)); // Enter
+
+    // Switcher should close after activation
+    EXPECT_TRUE(app.switcher().state_machine().is_closed());
+    EXPECT_FALSE(app.shell().overlay().is_active());
+
+    // Re-open and cancel with Esc
+    ASSERT_TRUE(app.switcher().open().is_ok());
+    EXPECT_TRUE(app.switcher().is_open());
+    EXPECT_TRUE(app.switcher().handle_key(0xff1b)); // Esc
+    EXPECT_TRUE(app.switcher().state_machine().is_closed());
+
+    // Clean up
+    finish_client = true;
+    client_thread.join();
+    app.request_shutdown(0);
+}
+
 
 
 

@@ -60,7 +60,7 @@
   "git.ignoreSubmodules": true,
   "git.decorations.enabled": true,
   "git.openRepositoryInParentFolders": "never",
-  "git.scanRepositories": true,
+  "git.scanRepositories": [],
   "git.repositoryScanMaxDepth": 1,
   "git.ignoreLimitWarning": true,
   "git.terminalGitEnv": {

@@ -15,6 +15,9 @@ TEST(ConfigTest, Defaults) {
     EXPECT_EQ(cfg.get_string_or("logging", "level", ""), "INFO");
     EXPECT_DOUBLE_EQ(cfg.get_double_or("display", "scale_factor", 0.0), 1.0);
     EXPECT_TRUE(cfg.get_bool_or("input", "tap_to_click", false));
+    EXPECT_TRUE(cfg.get_bool_or("switcher", "enabled", false));
+    EXPECT_EQ(cfg.get_string_or("switcher", "presentation", ""), "application");
+    EXPECT_TRUE(cfg.get_bool_or("switcher", "mru", false));
     EXPECT_TRUE(cfg.validate().is_ok());
 }
 

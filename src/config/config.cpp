@@ -74,6 +74,11 @@ void Config::load_defaults() {
     set("dock", "pinned", "");
     set("dock", "item_size", "48");
     set("dock", "spacing", "8");
+    set("switcher", "enabled", "true");
+    set("switcher", "presentation", "application");
+    set("switcher", "mru", "true");
+    set("switcher", "show_window_count", "true");
+    set("switcher", "show_window_titles", "true");
 
     loaded_sources_.emplace_back("<defaults>");
 }
