@@ -40,10 +40,23 @@ set(LDDE_CORE_SOURCES
     src/wayland/connection.cpp
     src/wayland/registry.cpp
     src/wayland/xdg-shell-protocol.c
+    src/display/orientation.cpp
+    src/display/display_geometry.cpp
+    src/display/scale_policy.cpp
+    src/display/responsive_layout.cpp
+    src/display/layout_metrics.cpp
+    src/display/display_policy.cpp
     src/display/display_info.cpp
     src/display/display_manager.cpp
     src/input/seat.cpp
     src/input/input_manager.cpp
+    src/input/touch_interaction_policy.cpp
+    src/input/touch_gesture_state.cpp
+    src/input/touch_hit_testing.cpp
+    src/input/window_drag_controller.cpp
+    src/input/window_resize_controller.cpp
+    src/input/window_control_interaction.cpp
+    src/input/touch_interaction_manager.cpp
     src/shell/types.cpp
     src/shell/design_tokens.cpp
     src/shell/theme.cpp
@@ -68,6 +81,17 @@ set(LDDE_CORE_SOURCES
     src/window/window_interaction.cpp
     src/window/window_controls.cpp
     src/window/window_manager.cpp
+    src/application/application_id.cpp
+    src/application/application_icon.cpp
+    src/application/desktop_entry_source.cpp
+    src/application/desktop_entry.cpp
+    src/application/desktop_entry_reader.cpp
+    src/application/desktop_entry_parser.cpp
+    src/application/application_metadata.cpp
+    src/application/application_discovery_policy.cpp
+    src/application/application_catalog.cpp
+    src/application/application_discovery.cpp
+    src/application/application_change_monitor.cpp
     src/core/application.cpp
 )
 

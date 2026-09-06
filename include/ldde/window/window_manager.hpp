@@ -69,7 +69,9 @@ public:
     bool handle_touch_tap(const core::Point& pos, uint32_t timestamp_ms);
 
     // Display adaptation
+    void handle_display_change(const display::DisplayPolicy& policy);
     void handle_display_change(const display::DisplayInfo& display);
+    void handle_display_removed(display::DisplayId id);
 
     // Desktop queries
     [[nodiscard]] std::optional<WindowId> active_window_id() const noexcept { return focus_.active_window_id(); }

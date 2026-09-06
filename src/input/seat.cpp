@@ -73,11 +73,31 @@ Keyboard::~Keyboard() {
 // Touch
 // -----------------------------------------------------------------------------
 const wl_touch_listener Touch::touch_listener_ = {
-    .down = [](void*, wl_touch*, uint32_t, uint32_t, wl_surface*, int32_t, wl_fixed_t, wl_fixed_t) {},
-    .up = [](void*, wl_touch*, uint32_t, uint32_t, int32_t) {},
-    .motion = [](void*, wl_touch*, uint32_t, int32_t, wl_fixed_t, wl_fixed_t) {},
-    .frame = [](void*, wl_touch*) {},
-    .cancel = [](void*, wl_touch*) {},
+    .down = [](void* data, wl_touch*, uint32_t serial, uint32_t time, wl_surface* surface, int32_t id, wl_fixed_t x, wl_fixed_t y) {
+        if (data) {
+            static_cast<Touch*>(data)->handle_down(serial, time, surface, id, wl_fixed_to_double(x), wl_fixed_to_double(y));
+        }
+    },
+    .up = [](void* data, wl_touch*, uint32_t serial, uint32_t time, int32_t id) {
+        if (data) {
+            static_cast<Touch*>(data)->handle_up(serial, time, id);
+        }
+    },
+    .motion = [](void* data, wl_touch*, uint32_t time, int32_t id, wl_fixed_t x, wl_fixed_t y) {
+        if (data) {
+            static_cast<Touch*>(data)->handle_motion(time, id, wl_fixed_to_double(x), wl_fixed_to_double(y));
+        }
+    },
+    .frame = [](void* data, wl_touch*) {
+        if (data) {
+            static_cast<Touch*>(data)->handle_frame();
+        }
+    },
+    .cancel = [](void* data, wl_touch*) {
+        if (data) {
+            static_cast<Touch*>(data)->handle_cancel();
+        }
+    },
 #if defined(WL_TOUCH_SHAPE_SINCE_VERSION)
     .shape = [](void*, wl_touch*, int32_t, wl_fixed_t, wl_fixed_t) {},
 #endif
@@ -96,6 +116,36 @@ Touch::Touch(wayland::UniqueTouch touch)
 
 Touch::~Touch() {
     LDDE_LOG_DEBUG(Input, "Touch device released");
+}
+
+void Touch::handle_down(uint32_t serial, uint32_t time_ms, wl_surface* surface, int32_t id, double x, double y) {
+    if (on_down_) {
+        on_down_(TouchDownEvent{serial, time_ms, surface, id, x, y});
+    }
+}
+
+void Touch::handle_up(uint32_t serial, uint32_t time_ms, int32_t id) {
+    if (on_up_) {
+        on_up_(TouchUpEvent{serial, time_ms, id});
+    }
+}
+
+void Touch::handle_motion(uint32_t time_ms, int32_t id, double x, double y) {
+    if (on_motion_) {
+        on_motion_(TouchMotionEvent{time_ms, id, x, y});
+    }
+}
+
+void Touch::handle_frame() {
+    if (on_frame_) {
+        on_frame_();
+    }
+}
+
+void Touch::handle_cancel() {
+    if (on_cancel_) {
+        on_cancel_();
+    }
 }
 
 // -----------------------------------------------------------------------------

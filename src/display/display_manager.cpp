@@ -1,6 +1,5 @@
 #include "ldde/display/display_manager.hpp"
 #include "ldde/core/logging.hpp"
-
 #include <algorithm>
 
 namespace ldde::display {
@@ -47,7 +46,41 @@ DisplayManager::~DisplayManager() {
     reset();
 }
 
-Status DisplayManager::initialize(wayland::WaylandRegistry& registry) {
+void DisplayManager::load_config(const config::Config& config) {
+    auto preferred = config.get_string("display", "primary");
+    if (preferred.has_value()) {
+        preferred_primary_name_ = preferred.value();
+    }
+
+    auto layout_str = config.get_string("display", "layout_class");
+    if (layout_str.has_value()) {
+        config_layout_class_ = parse_layout_class(layout_str.value());
+    }
+
+    auto scale_opt = config.get_int("display", "scale");
+    if (scale_opt.has_value() && *scale_opt > 0) {
+        config_scale_ = static_cast<int32_t>(*scale_opt);
+    }
+
+    auto top = config.get_int("display", "safe_area.top");
+    auto right = config.get_int("display", "safe_area.right");
+    auto bottom = config.get_int("display", "safe_area.bottom");
+    auto left = config.get_int("display", "safe_area.left");
+    if (top.has_value() || right.has_value() || bottom.has_value() || left.has_value()) {
+        config_safe_insets_ = SafeInsets{
+            .left = static_cast<int32_t>(left.value_or(0)),
+            .top = static_cast<int32_t>(top.value_or(0)),
+            .right = static_cast<int32_t>(right.value_or(0)),
+            .bottom = static_cast<int32_t>(bottom.value_or(0))
+        };
+    }
+}
+
+Status DisplayManager::initialize(wayland::WaylandRegistry& registry, const config::Config* config) {
+    if (config) {
+        load_config(*config);
+    }
+
     registry.add_global_listener(
         "wl_output",
         [this, &registry](uint32_t name, std::string_view, uint32_t version) {
@@ -64,6 +97,7 @@ Status DisplayManager::initialize(wayland::WaylandRegistry& registry) {
             handle->manager = this;
             handle->pending_info.id = name;
             handle->pending_info.name = "output-" + std::to_string(name);
+            handle->policy = std::make_unique<DisplayPolicy>();
 
             OutputHandle* handle_ptr = handle.get();
             outputs_[name] = std::move(handle);
@@ -80,8 +114,10 @@ Status DisplayManager::initialize(wayland::WaylandRegistry& registry) {
             DisplayInfo removed_info = it->second->info;
             outputs_.erase(it);
             rebuild_display_list();
+            update_primary_display();
 
             LDDE_LOG_INFO(Display, "Output removed: " << removed_info.name << " (id " << name << ")");
+            emit_event(DisplayEventType::DisplayRemoved, name, removed_info);
             if (on_removed_) {
                 on_removed_(removed_info);
             }
@@ -93,12 +129,15 @@ Status DisplayManager::initialize(wayland::WaylandRegistry& registry) {
 void DisplayManager::reset() noexcept {
     outputs_.clear();
     display_list_.clear();
+    primary_id_.reset();
 }
 
 void DisplayManager::handle_geometry(OutputHandle* handle, int32_t x, int32_t y,
                                      int32_t physical_width, int32_t physical_height,
                                      int32_t /*subpixel*/, const char* make, const char* model,
                                      int32_t transform) {
+    handle->pending_info.logical_x = x;
+    handle->pending_info.logical_y = y;
     handle->pending_info.geometry.x = x;
     handle->pending_info.geometry.y = y;
     handle->pending_info.physical_width_mm = physical_width;
@@ -121,16 +160,18 @@ void DisplayManager::handle_mode(OutputHandle* handle, uint32_t flags, int32_t w
     handle->pending_info.modes.push_back(mode);
 
     if (mode.is_current) {
-        handle->pending_info.width = width;
-        handle->pending_info.height = height;
-        handle->pending_info.geometry.width = width;
-        handle->pending_info.geometry.height = height;
+        handle->pending_info.pixel_width = width;
+        handle->pending_info.pixel_height = height;
         handle->pending_info.refresh_rate_mhz = refresh;
     }
 }
 
 void DisplayManager::handle_scale(OutputHandle* handle, int32_t factor) {
-    handle->pending_info.scale = factor;
+    if (config_scale_.has_value()) {
+        handle->pending_info.scale = config_scale_.value();
+    } else {
+        handle->pending_info.scale = factor > 0 ? factor : 1;
+    }
 }
 
 void DisplayManager::handle_name(OutputHandle* handle, const char* name) {
@@ -146,26 +187,124 @@ void DisplayManager::handle_description(OutputHandle* handle, const char* descri
 }
 
 void DisplayManager::handle_done(OutputHandle* handle) {
-    bool is_new = (handle->info.width == 0 && handle->info.height == 0);
+    bool is_new = (handle->info.pixel_width == 0 && handle->info.pixel_height == 0 && handle->info.width == 0);
+
+    // 1. Calculate transformed physical pixels
+    int32_t trans_w = handle->pending_info.pixel_width;
+    int32_t trans_h = handle->pending_info.pixel_height;
+    apply_transform_to_dimensions(handle->pending_info.transform,
+                                  handle->pending_info.pixel_width,
+                                  handle->pending_info.pixel_height,
+                                  trans_w, trans_h);
+
+    // 2. Derive logical coordinates from transformed pixels and scale
+    int32_t eff_scale = handle->pending_info.scale > 0 ? handle->pending_info.scale : 1;
+    int32_t log_w = physical_to_logical(trans_w, eff_scale);
+    int32_t log_h = physical_to_logical(trans_h, eff_scale);
+
+    handle->pending_info.logical_width = log_w;
+    handle->pending_info.logical_height = log_h;
+    handle->pending_info.width = log_w;
+    handle->pending_info.height = log_h;
+    handle->pending_info.geometry.width = log_w;
+    handle->pending_info.geometry.height = log_h;
+
+    // 3. Derive Orientation
+    handle->pending_info.orientation = derive_orientation(handle->pending_info.transform, log_w, log_h);
+
+    // 4. Safe Area configuration
+    if (config_safe_insets_.has_value()) {
+        handle->pending_info.safe_insets = config_safe_insets_->rotated_for(handle->pending_info.transform);
+    }
+
+    // 5. Detect granular changes
+    bool geom_changed = (handle->info.logical_width != log_w ||
+                         handle->info.logical_height != log_h ||
+                         handle->info.logical_x != handle->pending_info.logical_x ||
+                         handle->info.logical_y != handle->pending_info.logical_y);
+    bool scale_changed = (handle->info.scale != handle->pending_info.scale);
+    bool orient_changed = (handle->info.orientation != handle->pending_info.orientation);
+    bool safe_changed = !(handle->info.safe_insets == handle->pending_info.safe_insets);
+
+    // 6. Update snapshot
     handle->info = handle->pending_info;
     handle->pending_info.modes.clear();
 
+    // 7. Update DisplayPolicy
+    if (!handle->policy) {
+        handle->policy = std::make_unique<DisplayPolicy>(handle->info);
+    } else {
+        handle->policy->update_display(handle->info);
+    }
+    if (config_layout_class_.has_value()) {
+        handle->policy->set_layout_class_override(config_layout_class_);
+    }
+
+    // 8. Sync available geometry
+    handle->info.available_geometry = handle->policy->available_geometry();
+
     rebuild_display_list();
+    update_primary_display();
 
     LDDE_LOG_INFO(Display, "Display " << handle->info.name << " ready: "
-                                      << handle->info.width << "x" << handle->info.height
-                                      << "@" << (handle->info.refresh_rate_mhz / 1000) << "Hz, scale="
+                                      << handle->info.pixel_width << "x" << handle->info.pixel_height
+                                      << " physical, " << log_w << "x" << log_h << " logical ("
+                                      << orientation_name(handle->info.orientation) << "), scale="
                                       << handle->info.scale << "x ("
                                       << handle->info.make << " " << handle->info.model << ")");
 
+    // 9. Dispatch structured events
     if (is_new) {
+        emit_event(DisplayEventType::DisplayAdded, handle->id, handle->info);
         if (on_added_) {
             on_added_(handle->info);
         }
     } else {
+        if (orient_changed) emit_event(DisplayEventType::OrientationChanged, handle->id, handle->info);
+        if (scale_changed) emit_event(DisplayEventType::ScaleChanged, handle->id, handle->info);
+        if (geom_changed) emit_event(DisplayEventType::GeometryChanged, handle->id, handle->info);
+        if (safe_changed) emit_event(DisplayEventType::SafeAreaChanged, handle->id, handle->info);
+
+        emit_event(DisplayEventType::DisplayChanged, handle->id, handle->info);
         if (on_changed_) {
             on_changed_(handle->info);
         }
+    }
+}
+
+void DisplayManager::register_synthetic_display(const DisplayInfo& info) {
+    auto handle = std::make_unique<OutputHandle>();
+    handle->id = info.id;
+    handle->manager = this;
+    handle->info = info;
+    handle->policy = std::make_unique<DisplayPolicy>(info);
+    if (config_layout_class_.has_value()) {
+        handle->policy->set_layout_class_override(config_layout_class_);
+    }
+    handle->info.available_geometry = handle->policy->available_geometry();
+
+    outputs_[info.id] = std::move(handle);
+    rebuild_display_list();
+    update_primary_display();
+
+    emit_event(DisplayEventType::DisplayAdded, info.id, info);
+    if (on_added_) {
+        on_added_(info);
+    }
+}
+
+void DisplayManager::remove_synthetic_display(DisplayId id) {
+    auto it = outputs_.find(id);
+    if (it == outputs_.end()) return;
+
+    DisplayInfo removed_info = it->second->info;
+    outputs_.erase(it);
+    rebuild_display_list();
+    update_primary_display();
+
+    emit_event(DisplayEventType::DisplayRemoved, id, removed_info);
+    if (on_removed_) {
+        on_removed_(removed_info);
     }
 }
 
@@ -177,14 +316,57 @@ void DisplayManager::rebuild_display_list() {
     }
 }
 
-std::optional<DisplayInfo> DisplayManager::primary_display() const noexcept {
-    if (display_list_.empty()) {
-        return std::nullopt;
+void DisplayManager::update_primary_display() {
+    if (outputs_.empty()) {
+        primary_id_.reset();
+        return;
     }
-    return display_list_.front();
+
+    // 1. If preferred primary output name is configured, find it
+    if (!preferred_primary_name_.empty()) {
+        for (const auto& [id, handle] : outputs_) {
+            if (handle->info.name == preferred_primary_name_) {
+                primary_id_ = id;
+                return;
+            }
+        }
+    }
+
+    // 2. If existing primary is still valid, retain it
+    if (primary_id_.has_value() && outputs_.find(*primary_id_) != outputs_.end()) {
+        return;
+    }
+
+    // 3. Fall back to first available output
+    primary_id_ = outputs_.begin()->first;
 }
 
-std::optional<DisplayInfo> DisplayManager::find_display_by_id(uint32_t id) const noexcept {
+std::optional<DisplayInfo> DisplayManager::primary_display() const noexcept {
+    if (!primary_id_.has_value()) {
+        return std::nullopt;
+    }
+    return find_display_by_id(*primary_id_);
+}
+
+std::optional<DisplayId> DisplayManager::primary_display_id() const noexcept {
+    return primary_id_;
+}
+
+const DisplayPolicy* DisplayManager::primary_policy() const noexcept {
+    if (!primary_id_.has_value()) {
+        return nullptr;
+    }
+    return find_policy_by_id(*primary_id_);
+}
+
+DisplayPolicy* DisplayManager::primary_policy() noexcept {
+    if (!primary_id_.has_value()) {
+        return nullptr;
+    }
+    return find_policy_by_id(*primary_id_);
+}
+
+std::optional<DisplayInfo> DisplayManager::find_display_by_id(DisplayId id) const noexcept {
     auto it = outputs_.find(id);
     if (it != outputs_.end()) {
         return it->second->info;
@@ -201,5 +383,26 @@ std::optional<DisplayInfo> DisplayManager::find_display_by_name(std::string_view
     return std::nullopt;
 }
 
-} // namespace ldde::display
+const DisplayPolicy* DisplayManager::find_policy_by_id(DisplayId id) const noexcept {
+    auto it = outputs_.find(id);
+    if (it != outputs_.end()) {
+        return it->second->policy.get();
+    }
+    return nullptr;
+}
 
+DisplayPolicy* DisplayManager::find_policy_by_id(DisplayId id) noexcept {
+    auto it = outputs_.find(id);
+    if (it != outputs_.end()) {
+        return it->second->policy.get();
+    }
+    return nullptr;
+}
+
+void DisplayManager::emit_event(DisplayEventType type, DisplayId id, const DisplayInfo& info) {
+    if (on_event_) {
+        on_event_(DisplayEvent{.type = type, .display_id = id}, info);
+    }
+}
+
+} // namespace ldde::display

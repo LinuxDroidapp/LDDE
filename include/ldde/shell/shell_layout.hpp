@@ -2,6 +2,8 @@
 
 #include "ldde/core/types.hpp"
 #include "ldde/display/display_info.hpp"
+#include "ldde/display/display_policy.hpp"
+#include "ldde/display/display_geometry.hpp"
 #include "ldde/shell/types.hpp"
 #include "ldde/shell/design_tokens.hpp"
 
@@ -11,6 +13,10 @@ class ShellLayout {
 public:
     ShellLayout();
     ~ShellLayout() = default;
+
+    void update(const display::DisplayPolicy& policy,
+                const DesignTokens& tokens,
+                DockPosition dock_pos = DockPosition::Bottom);
 
     void update(const display::DisplayInfo& display_info,
                 const DesignTokens& tokens,
@@ -22,6 +28,14 @@ public:
     [[nodiscard]] const core::Rect& status_geometry() const noexcept { return status_geometry_; }
     [[nodiscard]] const core::Rect& dock_geometry() const noexcept { return dock_geometry_; }
     [[nodiscard]] const core::Rect& overlay_geometry() const noexcept { return overlay_geometry_; }
+
+    [[nodiscard]] display::ShellReservations shell_reservations() const noexcept {
+        return display::ShellReservations{
+            .status_region = status_geometry_,
+            .dock_region = dock_geometry_,
+            .overlay_region = overlay_geometry_
+        };
+    }
 
     [[nodiscard]] const core::Insets& safe_insets() const noexcept { return safe_insets_; }
     [[nodiscard]] double scale() const noexcept { return scale_; }

@@ -14,10 +14,18 @@
 #include <thread>
 #include <filesystem>
 #include <fstream>
+#include "ldde/display/display_policy.hpp"
+#include "ldde/input/touch_interaction_manager.hpp"
 
 using namespace ldde::core;
 using namespace ldde::shell;
 using namespace ldde::window;
+using namespace ldde::display;
+using namespace ldde::input;
+
+namespace core = ldde::core;
+namespace display = ldde::display;
+namespace input = ldde::input;
 
 class WestonIntegrationTest : public ::testing::Test {
 protected:
@@ -622,4 +630,426 @@ TEST_F(WestonIntegrationTest, RealMultiWindowManagement) {
 
     app.request_shutdown(0);
 }
+
+TEST_F(WestonIntegrationTest, WestonDisplayPolicyAndDynamicChanges) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    // 1. Verify Weston output discovered and DisplayPolicy calculated
+    auto primary = app.display_manager().primary_display();
+    ASSERT_TRUE(primary.has_value());
+    EXPECT_GT(primary->pixel_width, 0);
+    EXPECT_GT(primary->pixel_height, 0);
+    EXPECT_GT(primary->logical_width, 0);
+    EXPECT_GT(primary->logical_height, 0);
+    EXPECT_GE(primary->scale, 1);
+
+    auto* policy = app.display_manager().primary_policy();
+    ASSERT_NE(policy, nullptr);
+    EXPECT_TRUE(policy->available_window_geometry().width > 0);
+    EXPECT_TRUE(policy->available_window_geometry().height > 0);
+    EXPECT_GE(policy->metrics().minimum_touch_target_px, 40);
+
+    // 2. Verify D1 Shell consumed D4 DisplayPolicy geometry
+    EXPECT_TRUE(app.shell().is_ready());
+    EXPECT_EQ(app.shell().desktop().geometry().width, primary->logical_width);
+    EXPECT_EQ(app.shell().desktop().geometry().height, primary->logical_height);
+    EXPECT_EQ(app.shell().status_region().geometry().width, primary->logical_width);
+    EXPECT_GT(app.shell().dock_region().geometry().width, 0);
+
+    // 3. Connect external client window to verify D3 WindowManager placement under D4 policy
+    std::string app_sock = app.window_tracker().application_socket_name();
+    ASSERT_FALSE(app_sock.empty());
+
+    struct ClientContext {
+        wl_display* display = nullptr;
+        wl_registry* registry = nullptr;
+        ExtClientData ext_data;
+        wl_surface* surface = nullptr;
+        xdg_surface* xdg_surf = nullptr;
+        xdg_toplevel* toplevel = nullptr;
+        std::atomic<bool> ready = false;
+        std::atomic<bool> done = false;
+    } client;
+
+    const xdg_surface_listener surf_l = {
+        .configure = [](void*, xdg_surface* surf, uint32_t serial) {
+            xdg_surface_ack_configure(surf, serial);
+        }
+    };
+
+    std::thread client_thread([&]() {
+        client.display = wl_display_connect(app_sock.c_str());
+        if (!client.display) return;
+        client.registry = wl_display_get_registry(client.display);
+        wl_registry_add_listener(client.registry, &ext_reg_listener, &client.ext_data);
+        wl_display_roundtrip(client.display);
+        wl_display_roundtrip(client.display);
+
+        if (!client.ext_data.compositor || !client.ext_data.wm_base) return;
+
+        client.surface = wl_compositor_create_surface(client.ext_data.compositor);
+        client.xdg_surf = xdg_wm_base_get_xdg_surface(client.ext_data.wm_base, client.surface);
+        xdg_surface_add_listener(client.xdg_surf, &surf_l, nullptr);
+
+        client.toplevel = xdg_surface_get_toplevel(client.xdg_surf);
+        xdg_toplevel_set_title(client.toplevel, "D4 Display Test App");
+        xdg_toplevel_set_app_id(client.toplevel, "org.ldde.DisplayTestApp");
+        wl_surface_commit(client.surface);
+        wl_display_roundtrip(client.display);
+
+        client.ready = true;
+
+        while (!client.done) {
+            struct pollfd pfd = { wl_display_get_fd(client.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(client.display);
+            }
+        }
+
+        xdg_toplevel_destroy(client.toplevel);
+        xdg_surface_destroy(client.xdg_surf);
+        wl_surface_destroy(client.surface);
+        xdg_wm_base_destroy(client.ext_data.wm_base);
+        wl_compositor_destroy(client.ext_data.compositor);
+        wl_registry_destroy(client.registry);
+        wl_display_flush(client.display);
+        wl_display_disconnect(client.display);
+    });
+
+    auto start_t = std::chrono::steady_clock::now();
+    while (!client.ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    ASSERT_EQ(app.window_registry().count(), 1u);
+    auto win = app.window_registry().windows()[0];
+    EXPECT_EQ(win->title(), "D4 Display Test App");
+
+    // Verify initial geometry is within available window geometry
+    core::Rect win_geom = win->geometry();
+    core::Rect usable = policy->available_window_geometry();
+    EXPECT_GE(win_geom.x, usable.x);
+    EXPECT_GE(win_geom.y, usable.y);
+    EXPECT_LE(win_geom.width, usable.width);
+    EXPECT_LE(win_geom.height, usable.height);
+
+    // 4. Test Maximize using D4 geometry
+    Status max_s = app.window_manager().maximize(win->id());
+    EXPECT_TRUE(max_s.is_ok());
+    EXPECT_EQ(win->geometry(), policy->maximized_geometry());
+
+    // 5. Test Fullscreen using D4 geometry
+    Status fs_s = app.window_manager().fullscreen(win->id());
+    EXPECT_TRUE(fs_s.is_ok());
+    EXPECT_EQ(win->geometry(), policy->fullscreen_geometry());
+
+    // 6. Test dynamic display rotation adaptation: adapt to portrait phone resolution (720x1280)
+    display::DisplayInfo rotated = *primary;
+    rotated.logical_width = 720;
+    rotated.logical_height = 1280;
+    rotated.width = 720;
+    rotated.height = 1280;
+    rotated.pixel_width = 720;
+    rotated.pixel_height = 1280;
+    rotated.transform = display::DisplayTransform::Normal;
+    rotated.orientation = display::Orientation::Portrait;
+
+    display::DisplayPolicy rotated_policy(rotated);
+    app.shell().update_display_policy(rotated_policy);
+    app.window_manager().handle_display_change(rotated_policy);
+
+    // Verify Shell and window adapted without crashing or destroying window
+    EXPECT_EQ(app.shell().desktop().geometry().width, 720);
+    EXPECT_EQ(app.shell().desktop().geometry().height, 1280);
+    EXPECT_EQ(win->geometry(), rotated_policy.fullscreen_geometry());
+    EXPECT_TRUE(win->is_visible());
+    EXPECT_EQ(app.window_registry().count(), 1u);
+
+    // Restore to normal floating inside new portrait geometry
+    Status res_s = app.window_manager().restore(win->id());
+    EXPECT_TRUE(res_s.is_ok());
+    EXPECT_EQ(win->state(), WindowState::Normal);
+    EXPECT_LE(win->geometry().width, rotated_policy.available_window_geometry().width);
+    EXPECT_LE(win->geometry().height, rotated_policy.available_window_geometry().height);
+
+    // Clean up
+    client.done = true;
+    client_thread.join();
+
+    app.request_shutdown(0);
+}
+
+TEST_F(WestonIntegrationTest, WestonRealTouchWindowInteraction) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    std::string app_sock = app.window_tracker().application_socket_name();
+    EXPECT_FALSE(app_sock.empty());
+
+    auto* touch_mgr = app.touch_interaction_manager();
+    ASSERT_NE(touch_mgr, nullptr);
+    EXPECT_TRUE(touch_mgr->policy().touch_enabled);
+
+    // Connect two real application clients
+    struct TouchClientContext {
+        wl_display* display = nullptr;
+        wl_registry* registry = nullptr;
+        ExtClientData ext_data;
+        wl_surface* surface = nullptr;
+        xdg_surface* xdg_surf = nullptr;
+        xdg_toplevel* toplevel = nullptr;
+        std::atomic<bool> closed = false;
+    };
+
+    const xdg_surface_listener xdg_surf_listener = {
+        .configure = [](void*, xdg_surface* surf, uint32_t serial) {
+            xdg_surface_ack_configure(surf, serial);
+        }
+    };
+
+    const xdg_toplevel_listener xdg_top_listener = {
+        .configure = [](void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {},
+        .close = [](void* data, xdg_toplevel*) {
+            auto* ctx = static_cast<TouchClientContext*>(data);
+            ctx->closed = true;
+        },
+        .configure_bounds = nullptr,
+        .wm_capabilities = nullptr,
+    };
+
+    std::atomic<bool> client1_ready = false;
+    std::atomic<bool> client2_ready = false;
+    std::atomic<bool> finish_clients = false;
+    std::atomic<bool> c1_done = false;
+    std::atomic<bool> c2_done = false;
+
+    TouchClientContext c1;
+    TouchClientContext c2;
+
+    std::thread c1_thread([&]() {
+        c1.display = wl_display_connect(app_sock.c_str());
+        if (!c1.display) return;
+        c1.registry = wl_display_get_registry(c1.display);
+        wl_registry_add_listener(c1.registry, &ext_reg_listener, &c1.ext_data);
+        wl_display_roundtrip(c1.display);
+        wl_display_roundtrip(c1.display);
+
+        if (!c1.ext_data.compositor || !c1.ext_data.wm_base) return;
+
+        c1.surface = wl_compositor_create_surface(c1.ext_data.compositor);
+        c1.xdg_surf = xdg_wm_base_get_xdg_surface(c1.ext_data.wm_base, c1.surface);
+        xdg_surface_add_listener(c1.xdg_surf, &xdg_surf_listener, &c1);
+
+        c1.toplevel = xdg_surface_get_toplevel(c1.xdg_surf);
+        xdg_toplevel_add_listener(c1.toplevel, &xdg_top_listener, &c1);
+        xdg_toplevel_set_title(c1.toplevel, "Touch Client 1");
+        xdg_toplevel_set_app_id(c1.toplevel, "org.ldde.Touch1");
+        wl_surface_commit(c1.surface);
+        wl_display_roundtrip(c1.display);
+
+        client1_ready = true;
+
+        while (!finish_clients && !c1.closed) {
+            struct pollfd pfd = { wl_display_get_fd(c1.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(c1.display);
+            }
+        }
+
+        xdg_toplevel_destroy(c1.toplevel);
+        xdg_surface_destroy(c1.xdg_surf);
+        wl_surface_destroy(c1.surface);
+        xdg_wm_base_destroy(c1.ext_data.wm_base);
+        wl_compositor_destroy(c1.ext_data.compositor);
+        wl_registry_destroy(c1.registry);
+        wl_display_flush(c1.display);
+        wl_display_disconnect(c1.display);
+        c1_done = true;
+    });
+
+    auto start_t = std::chrono::steady_clock::now();
+    while (!client1_ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+    ASSERT_EQ(app.window_registry().count(), 1u);
+    auto win1 = app.window_registry().windows()[0];
+
+    std::thread c2_thread([&]() {
+        c2.display = wl_display_connect(app_sock.c_str());
+        if (!c2.display) return;
+        c2.registry = wl_display_get_registry(c2.display);
+        wl_registry_add_listener(c2.registry, &ext_reg_listener, &c2.ext_data);
+        wl_display_roundtrip(c2.display);
+        wl_display_roundtrip(c2.display);
+
+        if (!c2.ext_data.compositor || !c2.ext_data.wm_base) return;
+
+        c2.surface = wl_compositor_create_surface(c2.ext_data.compositor);
+        c2.xdg_surf = xdg_wm_base_get_xdg_surface(c2.ext_data.wm_base, c2.surface);
+        xdg_surface_add_listener(c2.xdg_surf, &xdg_surf_listener, &c2);
+
+        c2.toplevel = xdg_surface_get_toplevel(c2.xdg_surf);
+        xdg_toplevel_add_listener(c2.toplevel, &xdg_top_listener, &c2);
+        xdg_toplevel_set_title(c2.toplevel, "Touch Client 2");
+        xdg_toplevel_set_app_id(c2.toplevel, "org.ldde.Touch2");
+        wl_surface_commit(c2.surface);
+        wl_display_roundtrip(c2.display);
+
+        client2_ready = true;
+
+        while (!finish_clients && !c2.closed) {
+            struct pollfd pfd = { wl_display_get_fd(c2.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(c2.display);
+            }
+        }
+
+        xdg_toplevel_destroy(c2.toplevel);
+        xdg_surface_destroy(c2.xdg_surf);
+        wl_surface_destroy(c2.surface);
+        xdg_wm_base_destroy(c2.ext_data.wm_base);
+        wl_compositor_destroy(c2.ext_data.compositor);
+        wl_registry_destroy(c2.registry);
+        wl_display_flush(c2.display);
+        wl_display_disconnect(c2.display);
+        c2_done = true;
+    });
+
+    start_t = std::chrono::steady_clock::now();
+    while (!client2_ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+    ASSERT_EQ(app.window_registry().count(), 2u);
+
+    auto all_wins = app.window_registry().windows();
+    auto win2 = (all_wins[0]->id() == win1->id()) ? all_wins[1] : all_wins[0];
+
+    // Explicitly place windows to test touch interaction
+    win1->set_geometry(core::Rect{50, 60, 300, 300});
+    win2->set_geometry(core::Rect{400, 60, 300, 300});
+
+    // 1. Stacking and Focus via Touch Tap
+    EXPECT_EQ(app.window_manager().active_window_id(), win2->id());
+
+    // Tap win1 title bar at (100, 80)
+    EXPECT_TRUE(touch_mgr->handle_touch_down(0, core::Point{100, 80}, 1000));
+    EXPECT_EQ(touch_mgr->state(), GestureState::ContactPending);
+    EXPECT_TRUE(touch_mgr->handle_touch_up(0, 1050));
+    EXPECT_EQ(touch_mgr->state(), GestureState::Idle);
+    EXPECT_EQ(app.window_manager().active_window_id(), win1->id());
+
+    // 2. Touch-to-Move
+    // Move win1 by (+60, +40)
+    EXPECT_TRUE(touch_mgr->handle_touch_down(0, core::Point{100, 80}, 2000));
+    EXPECT_TRUE(touch_mgr->handle_touch_motion(0, core::Point{160, 120}, 2020));
+    EXPECT_EQ(touch_mgr->state(), GestureState::Moving);
+    EXPECT_TRUE(touch_mgr->handle_touch_up(0, 2050));
+    EXPECT_EQ(touch_mgr->state(), GestureState::Idle);
+    EXPECT_EQ(win1->geometry().x, 110);
+    EXPECT_EQ(win1->geometry().y, 100);
+
+    // 3. Touch-to-Resize (Bottom-Right corner)
+    // win1 is at (110, 100, 300, 300) -> bottom right is (410, 400)
+    EXPECT_TRUE(touch_mgr->handle_touch_down(0, core::Point{405, 395}, 3000));
+    EXPECT_TRUE(touch_mgr->handle_touch_motion(0, core::Point{455, 435}, 3020));
+    EXPECT_EQ(touch_mgr->state(), GestureState::Resizing);
+    EXPECT_TRUE(touch_mgr->handle_touch_up(0, 3050));
+    EXPECT_EQ(touch_mgr->state(), GestureState::Idle);
+    EXPECT_EQ(win1->geometry().width, 350);
+    EXPECT_EQ(win1->geometry().height, 340);
+
+    // 4. Double Tap on Title Bar to Maximize & Restore
+    touch_mgr->handle_touch_down(0, core::Point{150, 120}, 4000);
+    touch_mgr->handle_touch_up(0, 4050);
+    touch_mgr->handle_touch_down(0, core::Point{152, 122}, 4150);
+    touch_mgr->handle_touch_up(0, 4200);
+    EXPECT_EQ(win1->state(), WindowState::Maximized);
+
+    // Double tap restore
+    int max_title_y = win1->geometry().y + 20;
+    touch_mgr->handle_touch_down(0, core::Point{150, max_title_y}, 4300);
+    touch_mgr->handle_touch_up(0, 4350);
+    touch_mgr->handle_touch_down(0, core::Point{152, max_title_y + 1}, 4450);
+    touch_mgr->handle_touch_up(0, 4500);
+    EXPECT_EQ(win1->state(), WindowState::Normal);
+
+    // 5. Window Controls via Touch
+    int32_t btn_w = touch_mgr->policy().control_touch_target_px;
+    int32_t header_h = touch_mgr->policy().header_touch_height_px;
+
+    // Minimize win1 via minimize button: center is geom.x + geom.width - 3*btn_w + btn_w/2
+    core::Rect g1 = win1->geometry();
+    int min_btn_x = g1.x + g1.width - (3 * btn_w) + (btn_w / 2);
+    int min_btn_y = g1.y + (header_h / 2);
+    touch_mgr->handle_touch_down(0, core::Point{min_btn_x, min_btn_y}, 5000);
+    touch_mgr->handle_touch_up(0, 5050);
+    EXPECT_EQ(win1->state(), WindowState::Minimized);
+    // Focus falls back to win2
+    EXPECT_EQ(app.window_manager().active_window_id(), win2->id());
+
+    // Close win2 via close button: center is g2.x + g2.width - btn_w + btn_w/2
+    core::Rect g2 = win2->geometry();
+    int close_btn_x = g2.x + g2.width - btn_w + (btn_w / 2);
+    int close_btn_y = g2.y + (header_h / 2);
+    touch_mgr->handle_touch_down(0, core::Point{close_btn_x, close_btn_y}, 6000);
+    touch_mgr->handle_touch_up(0, 6050);
+
+    // Give time for client 2 to process close event
+    start_t = std::chrono::steady_clock::now();
+    while (!c2.closed && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(2))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_TRUE(c2.closed);
+
+    // 6. Dynamic Display Rotation during touch interaction
+    app.window_manager().restore(win1->id());
+    EXPECT_EQ(win1->state(), WindowState::Normal);
+
+    touch_mgr->handle_touch_down(0, core::Point{win1->geometry().x + 50, win1->geometry().y + 20}, 7000);
+    touch_mgr->handle_touch_motion(0, core::Point{win1->geometry().x + 100, win1->geometry().y + 50}, 7020);
+    EXPECT_EQ(touch_mgr->state(), GestureState::Moving);
+
+    // Display change occurs during drag
+    ASSERT_NE(app.display_manager().primary_policy(), nullptr);
+    touch_mgr->handle_display_change(*app.display_manager().primary_policy());
+    EXPECT_EQ(touch_mgr->state(), GestureState::Idle);
+
+    // Clean up
+    finish_clients = true;
+    c1_thread.join();
+    c2_thread.join();
+
+    app.request_shutdown(0);
+}
+
 

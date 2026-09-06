@@ -154,6 +154,8 @@ Status Shell::initialize(wayland::WaylandConnection& /*connection*/,
 
     buffer_pool_ = std::make_unique<ShmBufferPool>(shm_);
 
+    display_manager_ = &display_manager;
+
     // 3. Initialize display and layout
     auto primary = display_manager.primary_display();
     if (primary) {
@@ -220,12 +222,37 @@ void Shell::update_display(const display::DisplayInfo& info) {
         return;
     }
 
-    double scale = info.scale > 0 ? static_cast<double>(info.scale) : 1.0;
+    if (display_manager_) {
+        auto* policy = display_manager_->find_policy_by_id(info.id);
+        if (policy) {
+            update_display_policy(*policy);
+            return;
+        }
+    }
+
+    display::DisplayPolicy policy(info);
+    update_display_policy(policy);
+}
+
+void Shell::update_display_policy(const display::DisplayPolicy& policy) {
+    if (policy.display_info().width <= 0 || policy.display_info().height <= 0) {
+        return;
+    }
+
+    double scale = policy.scale_policy().effective_scale();
     tokens_ = DesignTokens::create_scaled(scale);
     status_region_.set_tokens(tokens_);
     dock_region_.set_tokens(tokens_);
 
-    layout_.update(info, tokens_, dock_position_);
+    layout_.update(policy, tokens_, dock_position_);
+
+    // Register shell layout reservations into DisplayPolicy
+    if (display_manager_) {
+        auto* live_policy = display_manager_->find_policy_by_id(policy.display_info().id);
+        if (live_policy) {
+            live_policy->set_shell_reservations(layout_.shell_reservations());
+        }
+    }
 
     if (compositor_ && shm_) {
         if (!desktop_.is_created()) {

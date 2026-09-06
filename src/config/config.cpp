@@ -54,6 +54,15 @@ void Config::load_defaults() {
     set("logging", "level", "INFO");
     set("display", "scale_factor", "1.0");
     set("input", "tap_to_click", "true");
+    set("input", "touch_enabled", "true");
+    set("input", "touch_move_threshold", "10");
+    set("input", "touch_double_tap_timeout", "350");
+    set("input", "touch_double_tap_distance", "16");
+    set("input", "touch_resize_target", "28");
+    set("application", "desktop_identity", "LinuxDroid");
+    set("application", "watch_filesystem", "true");
+    set("application", "system_paths", "/usr/local/share/applications:/usr/share/applications");
+    set("application", "user_path", "~/.local/share/applications");
 
     loaded_sources_.emplace_back("<defaults>");
 }

@@ -37,6 +37,7 @@ public:
     void shutdown() noexcept;
 
     void update_display(const display::DisplayInfo& info);
+    void update_display_policy(const display::DisplayPolicy& policy);
     void render_all();
 
     // Input routing & hit testing
@@ -50,9 +51,13 @@ public:
     [[nodiscard]] ShellRegionType focused_region() const noexcept { return focused_region_; }
 
     [[nodiscard]] DesktopSurface& desktop() noexcept { return desktop_; }
+    [[nodiscard]] const DesktopSurface& desktop() const noexcept { return desktop_; }
     [[nodiscard]] StatusRegion& status_region() noexcept { return status_region_; }
+    [[nodiscard]] const StatusRegion& status_region() const noexcept { return status_region_; }
     [[nodiscard]] DockRegion& dock_region() noexcept { return dock_region_; }
+    [[nodiscard]] const DockRegion& dock_region() const noexcept { return dock_region_; }
     [[nodiscard]] ShellOverlay& overlay() noexcept { return overlay_; }
+    [[nodiscard]] const ShellOverlay& overlay() const noexcept { return overlay_; }
 
 private:
     ShellLifecycleState state_ = ShellLifecycleState::Created;
@@ -61,6 +66,7 @@ private:
     ShellLayout layout_;
     ShellRegionType focused_region_ = ShellRegionType::None;
 
+    display::DisplayManager* display_manager_ = nullptr;
     wl_compositor* compositor_ = nullptr;
     wl_subcompositor* subcompositor_ = nullptr;
     wl_shm* shm_ = nullptr;

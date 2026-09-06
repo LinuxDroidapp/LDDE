@@ -4,39 +4,44 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <cmath>
 #include "ldde/core/types.hpp"
+#include "ldde/display/orientation.hpp"
+#include "ldde/display/safe_area.hpp"
+#include "ldde/display/display_geometry.hpp"
 
 namespace ldde::display {
 
-enum class DisplayTransform : int32_t {
-    Normal = 0,
-    Rotate90 = 1,
-    Rotate180 = 2,
-    Rotate270 = 3,
-    Flipped = 4,
-    Flipped90 = 5,
-    Flipped180 = 6,
-    Flipped270 = 7
-};
-
-[[nodiscard]] std::string_view display_transform_name(DisplayTransform transform) noexcept;
+using DisplayId = uint32_t;
 
 struct DisplayMode {
-    int32_t width = 0;
-    int32_t height = 0;
-    int32_t refresh_rate_mhz = 0; // Millihertz (e.g. 60000 = 60Hz)
+    int32_t width = 0;             // Pixel width
+    int32_t height = 0;            // Pixel height
+    int32_t refresh_rate_mhz = 0;  // Millihertz (e.g. 60000 = 60Hz)
     bool is_current = false;
     bool is_preferred = false;
+
+    constexpr bool operator==(const DisplayMode& other) const = default;
 };
 
 struct DisplayInfo {
-    uint32_t id = 0;
+    DisplayId id = 0;
     std::string name;
     std::string make;
     std::string model;
     std::string description;
 
-    // Pixel dimensions
+    // Physical pixels (mode dimensions)
+    int32_t pixel_width = 0;
+    int32_t pixel_height = 0;
+
+    // Logical dimensions (Wayland compositor space)
+    int32_t logical_x = 0;
+    int32_t logical_y = 0;
+    int32_t logical_width = 0;
+    int32_t logical_height = 0;
+
+    // Backward-compatibility aliases for logical width and height
     int32_t width = 0;
     int32_t height = 0;
 
@@ -47,17 +52,21 @@ struct DisplayInfo {
     // Refresh rate of active mode (mHz)
     int32_t refresh_rate_mhz = 0;
 
-    // Scale factor (Wayland wl_output scale is integer, wl_output_fractional is double)
+    // Scale factor
     int32_t scale = 1;
 
     // Orientation / Transform
     DisplayTransform transform = DisplayTransform::Normal;
+    Orientation orientation = Orientation::Portrait;
 
     // Available desktop geometry (within compositor space)
     core::Rect geometry;
 
     // Safe insets (e.g. cutouts, rounded corners, status/nav margins)
-    core::Insets safe_insets;
+    SafeInsets safe_insets;
+
+    // Central available geometry calculation snapshot
+    AvailableGeometry available_geometry;
 
     // Supported display modes
     std::vector<DisplayMode> modes;
@@ -67,11 +76,37 @@ struct DisplayInfo {
     }
 
     [[nodiscard]] bool is_portrait() const noexcept {
-        return height > width;
+        if (logical_width > 0 && logical_height > 0) {
+            return logical_height > logical_width;
+        }
+        if (width > 0 && height > 0) {
+            return height > width;
+        }
+        return display::is_portrait(orientation);
     }
 
     [[nodiscard]] bool is_landscape() const noexcept {
-        return width >= height;
+        if (logical_width > 0 && logical_height > 0) {
+            return logical_width >= logical_height;
+        }
+        if (width > 0 && height > 0) {
+            return width >= height;
+        }
+        return display::is_landscape(orientation);
+    }
+
+    [[nodiscard]] double physical_diagonal_mm() const noexcept {
+        if (physical_width_mm <= 0 || physical_height_mm <= 0) return 0.0;
+        return std::hypot(static_cast<double>(physical_width_mm), static_cast<double>(physical_height_mm));
+    }
+
+    [[nodiscard]] double physical_diagonal_inches() const noexcept {
+        return physical_diagonal_mm() / 25.4;
+    }
+
+    [[nodiscard]] double dpi() const noexcept {
+        if (physical_width_mm <= 0 || pixel_width <= 0) return 0.0;
+        return (static_cast<double>(pixel_width) / static_cast<double>(physical_width_mm)) * 25.4;
     }
 };
 

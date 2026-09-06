@@ -53,8 +53,36 @@ private:
     static const wl_keyboard_listener keyboard_listener_;
 };
 
+struct TouchDownEvent {
+    uint32_t serial = 0;
+    uint32_t time_ms = 0;
+    wl_surface* surface = nullptr;
+    int32_t id = 0;
+    double x = 0.0;
+    double y = 0.0;
+};
+
+struct TouchUpEvent {
+    uint32_t serial = 0;
+    uint32_t time_ms = 0;
+    int32_t id = 0;
+};
+
+struct TouchMotionEvent {
+    uint32_t time_ms = 0;
+    int32_t id = 0;
+    double x = 0.0;
+    double y = 0.0;
+};
+
 class Touch : public InputDevice {
 public:
+    using TouchDownCallback = std::function<void(const TouchDownEvent&)>;
+    using TouchUpCallback = std::function<void(const TouchUpEvent&)>;
+    using TouchMotionCallback = std::function<void(const TouchMotionEvent&)>;
+    using TouchFrameCallback = std::function<void()>;
+    using TouchCancelCallback = std::function<void()>;
+
     explicit Touch(wayland::UniqueTouch touch);
     ~Touch() override;
 
@@ -62,8 +90,25 @@ public:
     [[nodiscard]] std::string_view name() const noexcept override { return "Touch"; }
     [[nodiscard]] wl_touch* wl_ptr() const noexcept { return touch_.get(); }
 
+    void on_down(TouchDownCallback cb) { on_down_ = std::move(cb); }
+    void on_up(TouchUpCallback cb) { on_up_ = std::move(cb); }
+    void on_motion(TouchMotionCallback cb) { on_motion_ = std::move(cb); }
+    void on_frame(TouchFrameCallback cb) { on_frame_ = std::move(cb); }
+    void on_cancel(TouchCancelCallback cb) { on_cancel_ = std::move(cb); }
+
+    void handle_down(uint32_t serial, uint32_t time_ms, wl_surface* surface, int32_t id, double x, double y);
+    void handle_up(uint32_t serial, uint32_t time_ms, int32_t id);
+    void handle_motion(uint32_t time_ms, int32_t id, double x, double y);
+    void handle_frame();
+    void handle_cancel();
+
 private:
     wayland::UniqueTouch touch_;
+    TouchDownCallback on_down_;
+    TouchUpCallback on_up_;
+    TouchMotionCallback on_motion_;
+    TouchFrameCallback on_frame_;
+    TouchCancelCallback on_cancel_;
     static const wl_touch_listener touch_listener_;
 };
 

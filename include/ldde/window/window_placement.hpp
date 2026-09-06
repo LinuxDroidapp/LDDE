@@ -4,6 +4,7 @@
 #include <vector>
 #include "ldde/core/types.hpp"
 #include "ldde/display/display_info.hpp"
+#include "ldde/display/display_policy.hpp"
 
 namespace ldde::window {
 
@@ -21,12 +22,20 @@ public:
     explicit WindowPlacement(PlacementConstraints constraints = {});
 
     [[nodiscard]] core::Rect calculate_initial_geometry(
+        const display::DisplayPolicy& policy,
+        size_t existing_window_count,
+        const core::Size& requested_size = {0, 0},
+        const core::Size& min_size = {200, 150},
+        const core::Size& max_size = {0, 0}) const noexcept;
+
+    [[nodiscard]] core::Rect calculate_initial_geometry(
         const display::DisplayInfo& display,
         size_t existing_window_count,
         const core::Size& requested_size = {0, 0},
         const core::Size& min_size = {200, 150},
         const core::Size& max_size = {0, 0}) const noexcept;
 
+    [[nodiscard]] core::Rect get_usable_area(const display::DisplayPolicy& policy) const noexcept;
     [[nodiscard]] core::Rect get_usable_area(const display::DisplayInfo& display) const noexcept;
 
     [[nodiscard]] core::Rect clamp_to_usable(

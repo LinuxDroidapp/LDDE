@@ -9,6 +9,7 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_event_loop.cpp
     unit/test_readiness.cpp
     unit/test_display_model.cpp
+    unit/test_display_policy.cpp
     unit/test_input_model.cpp
     unit/test_shell_layout.cpp
     unit/test_shell_tokens.cpp
@@ -24,6 +25,8 @@ set(LDDE_UNIT_TEST_SOURCES
     unit/test_window_interaction.cpp
     unit/test_window_controls.cpp
     unit/test_window_manager.cpp
+    unit/test_touch_interaction.cpp
+    unit/test_application_discovery.cpp
 )
 
 add_executable(ldde_unit_tests ${LDDE_UNIT_TEST_SOURCES})
@@ -36,7 +39,10 @@ target_link_libraries(ldde_unit_tests PRIVATE
 add_test(NAME unit_tests COMMAND ldde_unit_tests)
 
 # Integration Tests Executable
-add_executable(ldde_integration_tests integration/test_weston_integration.cpp)
+add_executable(ldde_integration_tests
+    integration/test_weston_integration.cpp
+    integration/test_application_integration.cpp
+)
 target_link_libraries(ldde_integration_tests PRIVATE
     ldde_core
     GTest::gtest

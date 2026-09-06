@@ -7,7 +7,8 @@
 namespace ldde::core {
 
 Application::Application()
-    : window_manager_(window_registry_, window_tracker_, display_manager_) {}
+    : window_manager_(window_registry_, window_tracker_, display_manager_),
+      application_discovery_(application_catalog_, application::ApplicationDiscoveryPolicy::from_config_and_env(config_)) {}
 
 Application::~Application() {
     perform_shutdown();
@@ -151,7 +152,7 @@ Status Application::initialize_components() {
     Status s = lifecycle_.transition_to(LifecycleState::InitializingComponents);
     if (s.is_error()) return s;
 
-    s = display_manager_.initialize(wayland_registry_);
+    s = display_manager_.initialize(wayland_registry_, &config_);
     if (s.is_error()) {
         lifecycle_.transition_to(LifecycleState::Failed);
         return s;
@@ -204,10 +205,99 @@ Status Application::initialize_components() {
         return s;
     }
 
-    // Attach display change observer to adapt window manager
-    display_manager_.on_display_changed([this](const display::DisplayInfo& disp) {
-        window_manager_.handle_display_change(disp);
+    // Initialize D5 Touch Interaction Manager
+    touch_interaction_manager_ = std::make_unique<input::TouchInteractionManager>(
+        window_manager_, window_registry_, display_manager_, config_, &shell_);
+
+    // Helper to connect a seat's touch device to TouchInteractionManager
+    auto connect_touch_device = [this](input::Seat* seat) {
+        if (!seat || !seat->touch() || !touch_interaction_manager_) return;
+        auto* tch = seat->touch();
+        tch->on_down([this](const input::TouchDownEvent& ev) {
+            if (touch_interaction_manager_) {
+                touch_interaction_manager_->handle_touch_down(
+                    ev.id,
+                    core::Point{static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y)},
+                    ev.time_ms);
+            }
+        });
+        tch->on_motion([this](const input::TouchMotionEvent& ev) {
+            if (touch_interaction_manager_) {
+                touch_interaction_manager_->handle_touch_motion(
+                    ev.id,
+                    core::Point{static_cast<int32_t>(ev.x), static_cast<int32_t>(ev.y)},
+                    ev.time_ms);
+            }
+        });
+        tch->on_up([this](const input::TouchUpEvent& ev) {
+            if (touch_interaction_manager_) {
+                touch_interaction_manager_->handle_touch_up(ev.id, ev.time_ms);
+            }
+        });
+        tch->on_cancel([this]() {
+            if (touch_interaction_manager_) {
+                touch_interaction_manager_->cancel_active_interaction();
+            }
+        });
+        tch->on_frame([this]() {
+            if (touch_interaction_manager_) {
+                touch_interaction_manager_->handle_touch_frame();
+            }
+        });
+    };
+
+    if (input_manager_.primary_seat()) {
+        connect_touch_device(input_manager_.primary_seat());
+    }
+    input_manager_.on_seat_added([connect_touch_device](input::Seat* seat) {
+        connect_touch_device(seat);
     });
+
+    // Window destruction observer for TouchInteractionManager
+    window_registry_.add_listener([this](const window::WindowEvent& ev) {
+        if (ev.type == window::WindowEventType::Destroyed && touch_interaction_manager_) {
+            touch_interaction_manager_->handle_window_destroyed(ev.window_id);
+        }
+    });
+
+    // Attach display change observer to adapt shell, window manager, and touch interaction
+    display_manager_.on_display_changed([this](const display::DisplayInfo& disp) {
+        shell_.update_display(disp);
+        auto* policy = display_manager_.find_policy_by_id(disp.id);
+        if (policy) {
+            window_manager_.handle_display_change(*policy);
+            if (touch_interaction_manager_) {
+                touch_interaction_manager_->handle_display_change(*policy);
+            }
+        } else {
+            window_manager_.handle_display_change(disp);
+        }
+    });
+
+    display_manager_.on_display_removed([this](const display::DisplayInfo& disp) {
+        window_manager_.handle_display_removed(disp.id);
+        auto primary = display_manager_.primary_display();
+        if (primary) {
+            shell_.update_display(*primary);
+            auto* policy = display_manager_.find_policy_by_id(primary->id);
+            if (policy && touch_interaction_manager_) {
+                touch_interaction_manager_->handle_display_change(*policy);
+            }
+        }
+    });
+
+    // Initialize D6 Application Discovery
+    application_discovery_.policy() = application::ApplicationDiscoveryPolicy::from_config_and_env(config_);
+    s = application_discovery_.scan_and_refresh();
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Application, "Initial application discovery failed: " << s.to_string());
+    }
+
+    if (config_.get_bool_or("application", "watch_filesystem", true)) {
+        application_change_monitor_ = std::make_unique<application::ApplicationChangeMonitor>(
+            application_discovery_, &event_loop_);
+        application_change_monitor_->start();
+    }
 
     return Status::ok();
 }
@@ -430,6 +520,16 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    if (application_change_monitor_) {
+        application_change_monitor_->stop();
+        application_change_monitor_.reset();
+    }
+    application_catalog_.clear();
+
+    if (touch_interaction_manager_) {
+        touch_interaction_manager_->reset();
+        touch_interaction_manager_.reset();
+    }
     window_manager_.shutdown();
     window_tracker_.shutdown();
     window_registry_.clear();
