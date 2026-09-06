@@ -7,7 +7,7 @@
 
 The **LinuxDroid Desktop Environment (LDDE)** is a standalone Linux-native Wayland desktop environment designed specifically for mobile-first Linux desktop usage.
 
-> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, and **D9 — Application Switcher**.
+> **Scope Status**: This repository contains **D0 — Foundation**, **D1 — Wayland Shell**, **D2 — Real Window Tracking**, **D3 — Window Management Subsystem**, **D4 — Mobile Display Policy**, **D5 — Touch Window Interaction**, **D6 — Application Discovery**, **D7 — Application Launcher**, **D8 — Dock**, **D9 — Application Switcher**, and **D10 — Home/Desktop**.
 
 ---
 
@@ -25,7 +25,7 @@ LinuxDroid Runtime
       Weston (Compositor)
         ↓
     LDDE
-    ├── Desktop Shell Subsystem (Desktop background, status bar, dock, overlay)
+    ├── Home/Desktop (Background gradient/glow, Cairo vector surface, empty state, overlay dismiss, swipe-up)
     ├── Application Switcher (MRU tracking, multi-window grouping, Cairo overlay, fast touch/key switching)
     ├── Dock Subsystem (Pinned apps, authoritative running state, multi-window grouping, launcher toggle)
     ├── Application Launcher (Deterministic state machine, search, grid, launch handoff)
@@ -40,16 +40,23 @@ LinuxDroid Runtime
 ### Separation of Responsibilities
 - **LDDM**: Graphical session and display-manager lifecycle.
 - **Weston**: Wayland compositor.
-- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, and switcher.
+- **LDDE**: Desktop environment, desktop shell, display policy, window tracking / management, application discovery, launcher, dock, switcher, and home/desktop.
 - **Linux Applications**: Standard Wayland/Xwayland applications.
 
 LDDE is strictly a **Wayland client** of Weston. It contains **no Android-specific code** and does not know about Android APIs, APK paths, or PRoot internals.
 
 ---
 
-## Subsystems in D0 – D9
+## Subsystems in D0 – D10
 
-1. **Application Switcher Subsystem (D9)**:
+1. **Home/Desktop Subsystem (D10)**:
+   - **Persistent Desktop Surface**: Base-level Wayland surface rendered via double-buffered Cairo vector graphics into `DesktopSurface`.
+   - **Background Styles & Glow**: Solid and linear vertical gradients with configurable top-center ambient wallpaper glow and empty-state branding watermark.
+   - **Authoritative Window State Consumption**: Synchronized directly with D2 `WindowRegistry` to track active non-destroyed window counts and evaluate empty/focused desktop state.
+   - **Multi-Overlay Dismissal**: Touch tap coordination that dismisses active transient shell overlays (D7 Launcher, D9 Switcher).
+   - **Swipe-Up Launcher Navigation**: Responsive vertical touch gesture navigation opening the D7 Launcher.
+   - **Dynamic Display Adaptation**: Adapts immediately to screen size, orientation changes (portrait/landscape), and safe area insets via D4 `DisplayPolicy`.
+2. **Application Switcher Subsystem (D9)**:
    - **Authoritative Window & App State**: Consumes running state directly from D2 `WindowRegistry` and D3 `WindowManager` (strictly zero process polling, `/proc` scraping, or shell calls).
    - **Deterministic MRU Ordering**: Focus-driven in-memory MRU tracking; automatically pre-selects the most recently used previous application for rapid Alt+Tab switching.
    - **Multi-Window Grouping & Transients**: Groups multiple windows by application ID with count badges; associates transient dialogs under parent applications.
@@ -212,14 +219,14 @@ dock_bg = #141c2cfa
 - **D0 Foundation** *(Completed)*
 - **D1 Wayland Shell** *(Completed)*
 - **D2 Real Window Tracking** *(Completed)*
-- **D3 Window Manager**
-- **D4 Mobile Display Policy**
-- **D5 Touch Interaction**
-- **D6 Application Discovery**
-- **D7 Launcher**
-- **D8 Dock**
-- **D9 Application Switcher**
-- **D10 Home/Desktop**
+- **D3 Window Manager** *(Completed)*
+- **D4 Mobile Display Policy** *(Completed)*
+- **D5 Touch Interaction** *(Completed)*
+- **D6 Application Discovery** *(Completed)*
+- **D7 Launcher** *(Completed)*
+- **D8 Dock** *(Completed)*
+- **D9 Application Switcher** *(Completed)*
+- **D10 Home/Desktop** *(Completed)*
 - **D11 System UI**
 - **D12 Notifications**
 - **D13 Settings**

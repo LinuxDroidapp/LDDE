@@ -18,6 +18,9 @@ TEST(ConfigTest, Defaults) {
     EXPECT_TRUE(cfg.get_bool_or("switcher", "enabled", false));
     EXPECT_EQ(cfg.get_string_or("switcher", "presentation", ""), "application");
     EXPECT_TRUE(cfg.get_bool_or("switcher", "mru", false));
+    EXPECT_EQ(cfg.get_string_or("desktop", "background_mode", ""), "gradient");
+    EXPECT_EQ(cfg.get_string_or("desktop", "background_color", ""), "#121826");
+    EXPECT_TRUE(cfg.get_bool_or("desktop", "ambient_glow", false));
     EXPECT_TRUE(cfg.validate().is_ok());
 }
 

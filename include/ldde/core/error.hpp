@@ -18,6 +18,7 @@ enum class ErrorCategory {
     Window,
     Dock,
     Switcher,
+    Desktop,
     Session,
     Resource,
     Internal
@@ -104,6 +105,13 @@ enum class ErrorCode {
     SwitcherWindowNotFound,
     SwitcherActivationFailed,
     SwitcherRestoreFailed,
+    // Desktop
+    DesktopInitializationFailed,
+    DesktopSurfaceFailed,
+    DesktopLayoutFailed,
+    DesktopDisplayError,
+    DesktopConfigurationError,
+    DesktopInvalidState,
     // Internal
     InvalidArgument,
     NotImplemented,

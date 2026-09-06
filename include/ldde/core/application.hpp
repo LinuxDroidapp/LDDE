@@ -24,6 +24,7 @@
 #include "ldde/launcher/launcher.hpp"
 #include "ldde/dock/dock.hpp"
 #include "ldde/switcher/switcher.hpp"
+#include "ldde/desktop/desktop.hpp"
 
 namespace ldde::core {
 
@@ -70,6 +71,8 @@ public:
     [[nodiscard]] const dock::Dock& dock() const noexcept { return dock_; }
     [[nodiscard]] switcher::Switcher& switcher() noexcept { return switcher_; }
     [[nodiscard]] const switcher::Switcher& switcher() const noexcept { return switcher_; }
+    [[nodiscard]] desktop::Desktop& desktop() noexcept { return desktop_; }
+    [[nodiscard]] const desktop::Desktop& desktop() const noexcept { return desktop_; }
 
     [[nodiscard]] static std::optional<CommandLineOptions> parse_args(int argc, char* argv[]);
     static void print_help(std::string_view program_name);
@@ -95,6 +98,7 @@ private:
     launcher::Launcher launcher_;
     dock::Dock dock_;
     switcher::Switcher switcher_;
+    desktop::Desktop desktop_;
 
     CommandLineOptions cli_options_;
     int exit_code_ = 0;

@@ -235,6 +235,7 @@ Status Application::initialize_components() {
                     core::Point{px, py},
                     ev.time_ms);
             }
+            desktop_.handle_touch_down(px, py);
         });
         tch->on_motion([this](const input::TouchMotionEvent& ev) {
             if (switcher_.is_open()) {
@@ -258,6 +259,7 @@ Status Application::initialize_components() {
                     core::Point{px, py},
                     ev.time_ms);
             }
+            desktop_.handle_touch_motion(px, py);
         });
         tch->on_up([this](const input::TouchUpEvent& ev) {
             if (switcher_.is_open()) {
@@ -272,6 +274,7 @@ Status Application::initialize_components() {
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_touch_up(ev.id, ev.time_ms);
             }
+            desktop_.handle_touch_up(0, 0);
         });
         tch->on_cancel([this]() {
             if (switcher_.is_open()) {
@@ -286,6 +289,7 @@ Status Application::initialize_components() {
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->cancel_active_interaction();
             }
+            desktop_.handle_touch_cancel();
         });
         tch->on_frame([this]() {
             if (touch_interaction_manager_) {
@@ -317,6 +321,7 @@ Status Application::initialize_components() {
             launcher_.update_display_policy(*policy);
             dock_.update_display_policy(*policy);
             switcher_.update_display_policy(*policy);
+            desktop_.update_display_policy(*policy);
             if (touch_interaction_manager_) {
                 touch_interaction_manager_->handle_display_change(*policy);
             }
@@ -335,6 +340,7 @@ Status Application::initialize_components() {
                 launcher_.update_display_policy(*policy);
                 dock_.update_display_policy(*policy);
                 switcher_.update_display_policy(*policy);
+                desktop_.update_display_policy(*policy);
                 if (touch_interaction_manager_) {
                     touch_interaction_manager_->handle_display_change(*policy);
                 }
@@ -427,6 +433,14 @@ Status Application::initialize_components() {
             shell_.render_all();
         }
     });
+
+    // Initialize D10 Home/Desktop
+    s = desktop_.initialize(shell_, window_registry_, window_manager_, launcher_, dock_, switcher_, default_policy, config_);
+    if (s.is_error()) {
+        LDDE_LOG_WARN(Desktop, "Failed to initialize desktop: " << s.to_string());
+    } else {
+        desktop_.activate();
+    }
 
     return Status::ok();
 }
@@ -649,6 +663,7 @@ void Application::perform_shutdown() {
     }
 
     // Release components in reverse initialization order
+    desktop_.shutdown();
     switcher_.shutdown();
     dock_.shutdown();
     launcher_.shutdown();

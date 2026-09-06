@@ -20,7 +20,11 @@ void DesktopSurface::render(ShmBufferPool& pool) {
         return;
     }
 
-    CairoRenderer::render_desktop(*buffer, theme_);
+    if (render_callback_) {
+        render_callback_(*buffer, theme_);
+    } else {
+        CairoRenderer::render_desktop(*buffer, theme_);
+    }
     commit_buffer(buffer);
 }
 

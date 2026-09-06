@@ -79,6 +79,12 @@ void Config::load_defaults() {
     set("switcher", "mru", "true");
     set("switcher", "show_window_count", "true");
     set("switcher", "show_window_titles", "true");
+    set("desktop", "background", "default");
+    set("desktop", "background_mode", "gradient");
+    set("desktop", "background_color", "#121826");
+    set("desktop", "background_color_bottom", "#0a0d14");
+    set("desktop", "ambient_glow", "true");
+    set("desktop", "show_empty_hint", "true");
 
     loaded_sources_.emplace_back("<defaults>");
 }

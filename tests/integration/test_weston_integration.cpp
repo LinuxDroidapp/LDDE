@@ -1532,6 +1532,138 @@ TEST_F(WestonIntegrationTest, SwitcherWorkflowAndRealWindowDiscovery) {
     app.request_shutdown(0);
 }
 
+TEST_F(WestonIntegrationTest, DesktopWorkflowWithRealWestonCompositor) {
+    Application app;
+
+    char arg0[] = "ldde";
+    char arg1[] = "--wayland-display";
+    char* arg2 = const_cast<char*>(socket_name_.c_str());
+    char arg3[] = "--log-level";
+    char arg4[] = "DEBUG";
+
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4};
+    int argc = 5;
+
+    Status init_status = app.initialize(argc, argv);
+    ASSERT_TRUE(init_status.is_ok()) << init_status.to_string();
+
+    // 1. Verify Desktop is active and empty initially
+    EXPECT_TRUE(app.desktop().is_active());
+    ASSERT_NE(app.desktop().model(), nullptr);
+    EXPECT_TRUE(app.desktop().model()->is_empty());
+    EXPECT_EQ(app.desktop().model()->active_window_count(), 0u);
+    EXPECT_TRUE(app.desktop().model()->is_desktop_focused());
+
+    // 2. Connect a real client window
+    std::string app_socket = app.window_tracker().application_socket_name();
+    ASSERT_FALSE(app_socket.empty());
+
+    struct DesktopClientContext {
+        wl_display* display = nullptr;
+        wl_registry* registry = nullptr;
+        ExtClientData ext_data;
+        wl_surface* surface = nullptr;
+        xdg_surface* xdg_surf = nullptr;
+        xdg_toplevel* toplevel = nullptr;
+        std::atomic<bool> ready = false;
+        std::atomic<bool> closed = false;
+    };
+
+    const xdg_surface_listener xdg_surf_listener = {
+        .configure = [](void*, xdg_surface* surf, uint32_t serial) {
+            xdg_surface_ack_configure(surf, serial);
+        }
+    };
+
+    const xdg_toplevel_listener xdg_top_listener = {
+        .configure = [](void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {},
+        .close = [](void* data, xdg_toplevel*) {
+            if (data) static_cast<DesktopClientContext*>(data)->closed = true;
+        },
+        .configure_bounds = nullptr,
+        .wm_capabilities = nullptr,
+    };
+
+    DesktopClientContext client_ctx;
+    std::atomic<bool> finish_client = false;
+
+    std::thread client_thread([&]() {
+        client_ctx.display = wl_display_connect(app_socket.c_str());
+        if (!client_ctx.display) return;
+        client_ctx.registry = wl_display_get_registry(client_ctx.display);
+        wl_registry_add_listener(client_ctx.registry, &ext_reg_listener, &client_ctx.ext_data);
+        wl_display_roundtrip(client_ctx.display);
+        wl_display_roundtrip(client_ctx.display);
+
+        if (!client_ctx.ext_data.compositor || !client_ctx.ext_data.wm_base) return;
+
+        client_ctx.surface = wl_compositor_create_surface(client_ctx.ext_data.compositor);
+        client_ctx.xdg_surf = xdg_wm_base_get_xdg_surface(client_ctx.ext_data.wm_base, client_ctx.surface);
+        xdg_surface_add_listener(client_ctx.xdg_surf, &xdg_surf_listener, &client_ctx);
+
+        client_ctx.toplevel = xdg_surface_get_toplevel(client_ctx.xdg_surf);
+        xdg_toplevel_add_listener(client_ctx.toplevel, &xdg_top_listener, &client_ctx);
+        xdg_toplevel_set_title(client_ctx.toplevel, "Desktop Real Window App");
+        xdg_toplevel_set_app_id(client_ctx.toplevel, "org.ldde.DesktopClient");
+        wl_surface_commit(client_ctx.surface);
+        wl_display_roundtrip(client_ctx.display);
+
+        client_ctx.ready = true;
+
+        while (!finish_client && !client_ctx.closed) {
+            struct pollfd pfd = { wl_display_get_fd(client_ctx.display), POLLIN, 0 };
+            if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                wl_display_dispatch(client_ctx.display);
+            }
+        }
+
+        xdg_toplevel_destroy(client_ctx.toplevel);
+        xdg_surface_destroy(client_ctx.xdg_surf);
+        wl_surface_destroy(client_ctx.surface);
+        xdg_wm_base_destroy(client_ctx.ext_data.wm_base);
+        wl_compositor_destroy(client_ctx.ext_data.compositor);
+        wl_registry_destroy(client_ctx.registry);
+        wl_display_flush(client_ctx.display);
+        wl_display_disconnect(client_ctx.display);
+    });
+
+    auto start_t = std::chrono::steady_clock::now();
+    while (!client_ctx.ready && (std::chrono::steady_clock::now() - start_t < std::chrono::seconds(3))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    app.window_tracker().dispatch_server();
+
+    ASSERT_TRUE(client_ctx.ready);
+
+    // 3. Verify desktop model observes real window
+    EXPECT_FALSE(app.desktop().model()->is_empty());
+    EXPECT_GE(app.desktop().model()->active_window_count(), 1u);
+
+    // 4. Test desktop touch interaction
+    EXPECT_TRUE(app.desktop().handle_touch_down(200, 200));
+    EXPECT_TRUE(app.desktop().handle_touch_up(200, 200));
+
+    // 5. Exit client and verify return to empty desktop
+    finish_client = true;
+    client_thread.join();
+
+    auto wait_exit_t = std::chrono::steady_clock::now();
+    while (app.desktop().model()->active_window_count() > 0 &&
+           (std::chrono::steady_clock::now() - wait_exit_t < std::chrono::seconds(2))) {
+        app.window_tracker().dispatch_server();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(app.desktop().model()->is_empty());
+    EXPECT_TRUE(app.desktop().model()->is_desktop_focused());
+
+    app.desktop().shutdown();
+    EXPECT_TRUE(app.desktop().state() == ldde::desktop::DesktopState::Stopped);
+
+    app.request_shutdown(0);
+}
+
 
 
 

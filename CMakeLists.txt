@@ -118,6 +118,13 @@ set(LDDE_CORE_SOURCES
     src/switcher/switcher_view.cpp
     src/switcher/switcher_controller.cpp
     src/switcher/switcher.cpp
+    src/desktop/desktop_state.cpp
+    src/desktop/desktop_background.cpp
+    src/desktop/desktop_layout.cpp
+    src/desktop/desktop_model.cpp
+    src/desktop/desktop_view.cpp
+    src/desktop/desktop_controller.cpp
+    src/desktop/desktop.cpp
     src/core/application.cpp
 )
 

@@ -29,6 +29,7 @@ enum class LogCategory {
     Launcher,
     Dock,
     Switcher,
+    Desktop,
     Input,
     Display,
     Notification,
