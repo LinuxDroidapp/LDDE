@@ -237,22 +237,25 @@ install(CODE "
          SYMBOLIC)
 ")
 
-# Static library (for SDK consumers)
-install(TARGETS ldde_core
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde
-)
+option(INSTALL_DEV_LIBRARIES "Install static library and developer headers" OFF)
+if(INSTALL_DEV_LIBRARIES)
+    # Static library (for SDK consumers)
+    install(TARGETS ldde_core
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/ldde
+    )
 
-# Public headers (source tree)
-install(DIRECTORY include/ldde
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING PATTERN "*.hpp"
-)
+    # Public headers (source tree)
+    install(DIRECTORY include/ldde
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.hpp"
+    )
 
-# Generated version header
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/ldde/version.hpp
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ldde
-)
+    # Generated version header
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/ldde/version.hpp
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ldde
+    )
+endif()
 
 # Wayland session entry (discovered by LDDM and other display managers)
 install(FILES data/ldde.desktop
