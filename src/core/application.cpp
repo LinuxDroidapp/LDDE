@@ -66,6 +66,11 @@ std::optional<CommandLineOptions> Application::parse_args(int argc, char* argv[]
                 std::cerr << "Error: --ready-fd requires a file descriptor argument\n";
                 return std::nullopt;
             }
+        } else if (arg == "--session" || arg.starts_with("--session=")) {
+            if (!arg.starts_with("--session=") && i + 1 < argc && !std::string_view(argv[i + 1]).starts_with("-")) {
+                ++i;
+            }
+            continue;
         } else {
             std::cerr << "Unknown option: " << arg << "\n";
             return std::nullopt;
